@@ -1,113 +1,79 @@
-# _ChRIS_ Plugin Template
+# Spleen 3D image segmentation training (MONAI)
 
-[![test status](https://github.com/FNNDSC/python-chrisapp-template/actions/workflows/src.yml/badge.svg)](https://github.com/FNNDSC/python-chrisapp-template/actions/workflows/src.yml)
-[![MIT License](https://img.shields.io/github/license/FNNDSC/python-chrisapp-template)](LICENSE)
+[![Version](https://img.shields.io/docker/v/fnndsc/pl-monai_spleenseg_train?sort=semver)](https://hub.docker.com/r/fnndsc/pl-monai_spleenseg_train)
+[![MIT License](https://img.shields.io/github/license/fnndsc/pl-monai_spleenseg_train)](https://github.com/FNNDSC/pl-monai_spleenseg_train/blob/main/LICENSE)
+[![ci](https://github.com/FNNDSC/pl-monai_spleenseg_train/actions/workflows/ci.yml/badge.svg)](https://github.com/FNNDSC/pl-monai_spleenseg_train/actions/workflows/ci.yml)
 
-This is a minimal template repository for _ChRIS_ plugin applications in Python.
-
-## About _ChRIS_ Plugins
-
-A _ChRIS_ plugin is a scientific data-processing software which can run anywhere all-the-same:
-in the cloud via a [web app](https://github.com/FNNDSC/ChRIS_ui/), or on your own laptop
-from the terminal. They are easy to build and easy to understand: most simply, a
-_ChRIS_ plugin is a command-line program which processes data from an input directory
-and creates data to an output directory with the usage
-`commandname [options...] inputdir/ outputdir/`.
-
-For more information, visit our website https://chrisproject.org
-
-## How to Use This Template
-
-Go to https://github.com/FNNDSC/python-chrisapp-template and click "Use this template".
-The newly created repository is ready to use right away.
-
-A script `bootstrap.sh` is provided to help fill in and rename values for your new project.
-It is optional to use.
-
-1. Edit the variables in `bootstrap.sh`
-2. Run `./bootstrap.sh`
-3. Follow the instructions it will print out
-
-## Example Plugins
-
-Here are some good, complete examples of _ChRIS_ plugins created from this template.
-
-- https://github.com/FNNDSC/pl-dcm2niix (basic command wrapper example)
-- <https://github.com/FNNDSC/pl-adapt_object_mesh> (parallelizes a command)
-- https://github.com/FNNDSC/pl-mri-preview (uses [NiBabel](https://nipy.org/nibabel/))
-- https://github.com/FNNDSC/pl-pyvista-volume (example using Python package project structure and pytest)
-- https://github.com/FNNDSC/pl-fetal-cp-surface-extract (has a good README.md)
-
-## What's Inside
-
-| Path                       | Purpose                                                                                                                                                                                                  |
-|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `app.py`                   | Main script: start editing here!                                                                                                                                                                         |
-| `tests/`                   | Unit tests                                                                                                                                                                                               |
-| `setup.py`                 | [Python project metadata and installation script](https://packaging.python.org/en/latest/guides/distributing-packages-using-setuptools/#setup-py)                                                        |
-| `requirements.txt`         | List of Python dependencies                                                                                                                                                                              |
-| `Dockerfile`               | [Container image build recipe](https://docs.docker.com/engine/reference/builder/)                                                                                                                        |
-| `.github/workflows/ci.yml` | "continuous integration" using [Github Actions](https://docs.github.com/en/actions/learn-github-actions/understanding-github-actions): automatic testing, building, and uploads to https://chrisstore.co |
-
-## Contributing
-
-The source code for the `main` branch of this repository is on the
-[src](https://github.com/fnndsc/python-chrisapp-template/tree/src)
-branch, which has an additional file
-[`.github/workflows/src.yml`](https://github.com/FNNDSC/python-chrisapp-template/blob/src/.github/workflows/src.yml)
-When tests pass, changes are automatically merged into `main`.
-Developers should commit to or make pull requests targeting `src`.
-Do not push directly to `main`.
-
-This is a workaround in order to do automatic testing of this template
-without including the `.github/workflows/src.yml` file in the template itself.
-
-<!-- BEGIN README TEMPLATE
-
-# ChRIS Plugin Title
-
-[![Version](https://img.shields.io/docker/v/fnndsc/pl-appname?sort=semver)](https://hub.docker.com/r/fnndsc/pl-appname)
-[![MIT License](https://img.shields.io/github/license/fnndsc/pl-appname)](https://github.com/FNNDSC/pl-appname/blob/main/LICENSE)
-[![ci](https://github.com/FNNDSC/pl-appname/actions/workflows/ci.yml/badge.svg)](https://github.com/FNNDSC/pl-appname/actions/workflows/ci.yml)
-
-`pl-appname` is a [_ChRIS_](https://chrisproject.org/)
-_ds_ plugin which takes in ...  as input files and
-creates ... as output files.
+`pl-monai_spleenseg_train` is a [_ChRIS_](https://chrisproject.org/) _DS_ plugin based off Project MONAI's spleen segmentation exemplar. This particular plugin implements the training phase. Input files are a set of training examples (images and segmented images) and output files are training plots and weight (model) files in `pth` and `ONNX` format.
 
 ## Abstract
 
-...
+Based off Project MONAI's [spleen segmentation notebook](https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/spleen_segmentation_3d.ipynb), this plugin implements the _training_ phase of the notebook, using data supplied in the _parent_ plugin (see Implementation). For the most part, the python notebook code can be used _verbatim_ in the plugin; however, in this example some light editing (adding typing, and some refactoring) was added.
+
+## Implementation
+
+The original notebook is a largely self-contained _monolithic_ application. Exemplar input data is pulled from the web, and the notebook proceeds from there. In the case of this ChRIS plugin, some straightforward organizational changes are necessary. First, the training data is assumed to already have been downloaded _a priori_ and is provided to this plugin by its _parent_.
 
 ## Installation
 
-`pl-appname` is a _[ChRIS](https://chrisproject.org/) plugin_, meaning it can
+`pl-monai_spleenseg_train` is a _[ChRIS](https://chrisproject.org/) plugin_, meaning it can
 run from either within _ChRIS_ or the command-line.
 
 ## Local Usage
 
-To get started with local command-line usage, use [Apptainer](https://apptainer.org/)
-(a.k.a. Singularity) to run `pl-appname` as a container:
+To get started with local command-line usage, use [Apptainer](https://apptainer.org/) (a.k.a. Singularity) to run `pl-monai_spleenseg_train` as a container:
 
 ```shell
-apptainer exec docker://fnndsc/pl-appname commandname [--args values...] input/ output/
+apptainer exec docker://fnndsc/pl-monai_spleenseg_train spleenseg_train \
+            [--args values...] input/ output/
 ```
 
 To print its available options, run:
 
 ```shell
-apptainer exec docker://fnndsc/pl-appname commandname --help
+apptainer exec docker://fnndsc/pl-monai_spleenseg_train spleenseg_train --help
 ```
 
 ## Examples
 
-`commandname` requires two positional arguments: a directory containing
-input data, and a directory where to create output data.
-First, create the input directory and move input data into it.
+`spleenseg_train` requires two positional arguments: a directory containing input data, and a directory containing output data (graphs and "model" files). In this plugin, data is downloaded from [medicaldecathelon](http://medicaldecathelon.com). To get this data, first set an environment variable pointing at the directory to contain the pulled and unpacked data:
+
+```bash 
+export MONAI_DATA_DIR=/some/dir
+```
+
+now, you can pull the data with this python snippet:
+
+```python
+# You probably will need to
+#   pip install -q "monai-weekly[gdown, nibabel, tqdm, ignite]"
+from monai.apps import download_and_extract
+
+directory = os.environ.get("MONAI_DATA_DIRECTORY")
+root_dir = tempfile.mkdtemp() if directory is None else directory
+print(root_dir)
+
+
+resource = "https://msd-for-monai.s3-us-west-2.amazonaws.com/Task09_Spleen.tar"
+md5 = "410d4a301da4e5b2f6f86ec3ddba524e"
+compressed_file = os.path.join(root_dir, "Task09_Spleen.tar")
+data_dir = os.path.join(root_dir, "Task09_Spleen")
+if not os.path.exists(data_dir):
+    download_and_extract(resource, compressed_file, root_dir, md5)
+```
+
+Or simply run the supplied `trainingDataPull.py` script (which is essentially the above code):
+
+```bash 
+python trainingDataPull.py
+```
+
+Create some `output` directory, and using our `$MONAI_DATA_DIR`, we can run the plugin:
 
 ```shell
-mkdir incoming/ outgoing/
-mv some.dat other.dat incoming/
-apptainer exec docker://fnndsc/pl-appname:latest commandname [--args] incoming/ outgoing/
+mkdir outgoing/
+apptainer exec docker://fnndsc/pl-monai_spleenseg_train:latest spleenseg_train \
+        [--args] $MONAI_DATA_DIR outgoing/
 ```
 
 ## Development
@@ -119,35 +85,32 @@ Instructions for developers.
 Build a local container image:
 
 ```shell
-docker build -t localhost/fnndsc/pl-appname .
+docker build -t localhost/fnndsc/pl-monai_spleenseg_train .
 ```
 
 ### Running
 
-Mount the source code `app.py` into a container to try out changes without rebuild.
+Mount the source code `spleenseg_train.py` into a container to try out changes without rebuild.
 
 ```shell
 docker run --rm -it --userns=host -u $(id -u):$(id -g) \
-    -v $PWD/app.py:/usr/local/lib/python3.11/site-packages/app.py:ro \
+    -v $PWD/spleenseg_train.py:/usr/local/lib/python3.11/site-packages/spleenseg_train.py:ro \
     -v $PWD/in:/incoming:ro -v $PWD/out:/outgoing:rw -w /outgoing \
-    localhost/fnndsc/pl-appname commandname /incoming /outgoing
+    localhost/fnndsc/pl-monai_spleenseg_train spleenseg_train /incoming /outgoing
 ```
 
 ### Testing
 
-Run unit tests using `pytest`.
-It's recommended to rebuild the image to ensure that sources are up-to-date.
-Use the option `--build-arg extras_require=dev` to install extra dependencies for testing.
+Run unit tests using `pytest`. It's recommended to rebuild the image to ensure that sources are up-to-date. Use the option `--build-arg extras_require=dev` to install extra dependencies for testing.
 
 ```shell
-docker build -t localhost/fnndsc/pl-appname:dev --build-arg extras_require=dev .
-docker run --rm -it localhost/fnndsc/pl-appname:dev pytest
+docker build -t localhost/fnndsc/pl-monai_spleenseg_train:dev --build-arg extras_require=dev .
+docker run --rm -it localhost/fnndsc/pl-monai_spleenseg_train:dev pytest
 ```
 
 ## Release
 
-Steps for release can be automated by [Github Actions](.github/workflows/ci.yml).
-This section is about how to do those steps manually.
+Steps for release can be automated by [Github Actions](.github/workflows/ci.yml). This section is about how to do those steps manually.
 
 ### Increase Version Number
 
@@ -158,20 +121,19 @@ Increase the version number in `setup.py` and commit this file.
 Build and push an image tagged by the version. For example, for version `1.2.3`:
 
 ```
-docker build -t docker.io/fnndsc/pl-appname:1.2.3 .
-docker push docker.io/fnndsc/pl-appname:1.2.3
+docker build -t docker.io/fnndsc/pl-monai_spleenseg_train:1.2.3 .
+docker push docker.io/fnndsc/pl-monai_spleenseg_train:1.2.3
 ```
 
 ### Get JSON Representation
 
-Run [`chris_plugin_info`](https://github.com/FNNDSC/chris_plugin#usage)
-to produce a JSON description of this plugin, which can be uploaded to _ChRIS_.
+Run [`chris_plugin_info`](https://github.com/FNNDSC/chris_plugin#usage) to produce a JSON description of this plugin, which can be uploaded to _ChRIS_.
 
 ```shell
-docker run --rm docker.io/fnndsc/pl-appname:1.2.3 chris_plugin_info -d docker.io/fnndsc/pl-appname:1.2.3 > chris_plugin_info.json
+docker run --rm docker.io/fnndsc/pl-monai_spleenseg_train:1.2.3 chris_plugin_info \
+            -d docker.io/fnndsc/pl-monai_spleenseg_train:1.2.3 > chris_plugin_info.json
 ```
 
-Intructions on how to upload the plugin to _ChRIS_ can be found here:
-https://chrisproject.org/docs/tutorials/upload_plugin
+Intructions on how to upload the plugin to _ChRIS_ can be found here: https://chrisproject.org/docs/tutorials/upload_plugin
 
-END README TEMPLATE -->
+_-30-_
