@@ -1,4 +1,5 @@
 chris_plugin==0.4.0
+pudb
 
 matplotlib
 monai-weekly
