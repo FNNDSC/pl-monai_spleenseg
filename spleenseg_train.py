@@ -25,6 +25,7 @@ from monai.transforms import (
 )
 from monai.handlers.utils import from_engine
 from monai.networks.nets import UNet
+from monai.transforms import LoadImage
 from monai.networks.layers import Norm
 from monai.metrics import DiceMetric
 from monai.losses import DiceLoss
@@ -84,6 +85,12 @@ parser.add_argument(
     help="GPU/CPU device to use",
 )
 parser.add_argument(
+    "--maxEpochs",
+    type=int,
+    default=600,
+    help="max number of epochs to consider",
+)
+parser.add_argument(
     "--validateSize",
     type=int,
     default=9,
@@ -125,6 +132,33 @@ class Model:
 class LoaderCache:
     loader: DataLoader
     cache: CacheDataset
+
+
+@dataclass
+class trainingMetrics:
+    max_epochs: int = 600
+    val_interval = 2
+    epoch_loss_values: list[float] = []
+    metric_values: list[float] = []
+    best_metric: float = -1.0
+    best_metric_epoch = -1
+    modelPth: Path = Path("")
+    modelONNX: Path = Path("")
+    train_outputs: torch.Tensor | tuple[torch.Tensor, ...] | dict[Any, torch.Tensor] = (
+        torch.Tensor([])
+    )
+    train_labels: list = []
+    val_outputs: torch.Tensor | tuple[torch.Tensor, ...] | dict[Any, torch.Tensor] = (
+        torch.Tensor([])
+    )
+    val_labels: list = []
+
+    def __init__(self, options: Namespace):
+        self.options = options
+        if options is not None:
+            self.max_epochs = self.options.maxEpochs
+            self.modelPth = options.outputdir / "model.pth"
+            self.modelONNX = options.outputdir / "model.onnx"
 
 
 def trainingData_prep(options: Namespace, inputDir: Path) -> list[dict[str, str]]:
@@ -228,42 +262,40 @@ def transforms_setup(
     return transforms
 
 
-def validationTransforms_setup() -> Compose:
-    val_transforms = Compose(
-        [
-            LoadImaged(keys=["image", "label"]),
-            EnsureChannelFirstd(keys=["image", "label"]),
-            ScaleIntensityRanged(
-                keys=["image"],
-                a_min=-57,
-                a_max=164,
-                b_min=0.0,
-                b_max=1.0,
-                clip=True,
-            ),
-            CropForegroundd(keys=["image", "label"], source_key="image"),
-            Orientationd(keys=["image", "label"], axcodes="RAS"),
-            Spacingd(
-                keys=["image", "label"],
-                pixdim=(1.5, 1.5, 2.0),
-                mode=("bilinear", "nearest"),
-            ),
-        ]
+def transforms_post(transform: Compose) -> Compose:
+    composeList: list = []
+    composeList.append(
+        Invertd(
+            keys="pred",
+            transform=transform,
+            orig_keys="image",
+            meta_keys="pred_meta_dict",
+            orig_meta_keys="image_meta_dict",
+            meta_key_postfix="meta_dict",
+            nearest_interp=False,
+            to_tensor=True,
+            device="cpu",
+        )
     )
-    return val_transforms
+    composeList.append(
+        AsDiscreted(keys="pred", argmax=True, to_onehot=2),
+    )
+    composeList.append(AsDiscreted(keys="label", to_onehot=2))
+    transforms: Compose = Compose(composeList)
+    return transforms
 
 
-def validationTransforms_check(
-    validationFiles: list[dict[str, str]], validationTransforms: Compose
+def transforms_check(
+    files: list[dict[str, str]], transforms: Compose
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    check_ds: Dataset = Dataset(data=validationFiles, transform=validationTransforms)
+    check_ds: Dataset = Dataset(data=files, transform=transforms)
     check_loader: DataLoader = DataLoader(check_ds, batch_size=1)
     check_data: Any | None = first(check_loader)
     image, label = (check_data["image"][0][0], check_data["label"][0][0])
     return image, label
 
 
-def plot_inputAndLabel(
+def plot_imageAndLabel(
     image: torch.Tensor, label: torch.Tensor, savefile: Path
 ) -> None:
     plt.figure("check", (12, 6))
@@ -276,12 +308,26 @@ def plot_inputAndLabel(
     plt.savefig(str(savefile))
 
 
-def loaders_create(
-    trainingList: list[dict[str, str]],
-    trainingTransforms: Compose,
-    validationList: list[dict[str, str]],
-    validationTransforms,
-) -> tuple[LoaderCache, LoaderCache]:
+def plot_trainingMetrics(training: trainingMetrics, savefile: Path) -> None:
+    plt.figure("train", (12, 6))
+    plt.subplot(1, 2, 1)
+    plt.title("Epoch Average Loss")
+    x = [i + 1 for i in range(len(training.epoch_loss_values))]
+    y = training.epoch_loss_values
+    plt.xlabel("epoch")
+    plt.plot(x, y)
+    plt.subplot(1, 2, 2)
+    plt.title("Val Mean Dice")
+    x = [training.val_interval * (i + 1) for i in range(len(training.metric_values))]
+    y = training.metric_values
+    plt.xlabel("epoch")
+    plt.plot(x, y)
+    plt.show()
+
+
+def loaderCache_create(
+    fileList: list[dict[str, str]], transforms: Compose, batch_size: int = 2
+) -> tuple[LoaderCache, DataLoader]:
     """
     ## Define CacheDataset and DataLoader for training and validation
 
@@ -291,57 +337,44 @@ def loaders_create(
     And set `num_workers` to enable multi-threads during caching.
     If want to to try the regular Dataset, just change to use the commented code below.
     """
-    train_ds: CacheDataset = CacheDataset(
-        data=trainingList, transform=trainingTransforms, cache_rate=1.0, num_workers=4
+    ds: CacheDataset = CacheDataset(
+        data=fileList, transform=transforms, cache_rate=1.0, num_workers=4
     )
-    # train_ds = Dataset(data=train_files, transform=train_transforms)
 
     # use batch_size=2 to load images and use RandCropByPosNegLabeld
     # to generate 2 x 4 images for network training
-    train_loader: DataLoader = DataLoader(
-        train_ds, batch_size=2, shuffle=True, num_workers=4
+    loader: DataLoader = DataLoader(
+        ds, batch_size=batch_size, shuffle=True, num_workers=4
     )
-
-    val_ds: CacheDataset = CacheDataset(
-        data=validationList,
-        transform=validationTransforms,
-        cache_rate=1.0,
-        num_workers=4,
-    )
-    # val_ds = Dataset(data=val_files, transform=val_transforms)
-    val_loader: DataLoader = DataLoader(val_ds, batch_size=1, num_workers=4)
-    trainMeta: LoaderCache = LoaderCache(cache=train_ds, loader=train_loader)
-    valMeta: LoaderCache = LoaderCache(cache=val_ds, loader=val_loader)
-    return trainMeta, valMeta
+    cache: LoaderCache = LoaderCache(cache=ds, loader=loader)
+    return cache, loader
 
 
 def training_do(
-    network: Model, trainMeta: LoaderCache, valMeta: LoaderCache, outputDir: Path
-):
-    max_epochs = 600
-    val_interval = 2
-    best_metric = -1
-    best_metric_epoch = -1
-    epoch_loss_values = []
-    metric_values = []
+    training: trainingMetrics,
+    network: Model,
+    trainMeta: LoaderCache,
+    valMeta: LoaderCache,
+    outputDir: Path,
+) -> trainingMetrics:
     post_pred = Compose([AsDiscrete(argmax=True, to_onehot=2)])
     post_label = Compose([AsDiscrete(to_onehot=2)])
 
-    for epoch in range(max_epochs):
+    for epoch in range(training.max_epochs):
         print("-" * 10)
-        print(f"epoch {epoch + 1}/{max_epochs}")
+        print(f"epoch {epoch + 1}/{training.max_epochs}")
         network.model.train()
         epoch_loss = 0.0
         step = 0
         for batch_data in trainMeta.loader:
             step += 1
-            inputs, labels = (
+            inputs, training.train_labels = (
                 batch_data["image"].to(network.device),
                 batch_data["label"].to(network.device),
             )
             network.optimizer.zero_grad()
-            outputs = network.model(inputs)
-            loss = network.loss_function(outputs, labels)
+            training.train_outputs = network.model(inputs)
+            loss = network.loss_function(training.train_outputs, training.train_labels)
             loss.backward()
             network.optimizer.step()
             epoch_loss += loss.item()
@@ -350,24 +383,28 @@ def training_do(
                 f"train_loss: {loss.item():.4f}"
             )
         epoch_loss /= step
-        epoch_loss_values.append(epoch_loss)
+        training.epoch_loss_values.append(epoch_loss)
         print(f"epoch {epoch + 1} average loss: {epoch_loss:.4f}")
 
-        if (epoch + 1) % val_interval == 0:
+        if (epoch + 1) % training.val_interval == 0:
             network.model.eval()
             with torch.no_grad():
                 for val_data in valMeta.loader:
-                    val_inputs, val_labels = (
+                    val_inputs, training.val_labels = (
                         val_data["image"].to(network.device),
                         val_data["label"].to(network.device),
                     )
                     roi_size = (160, 160, 160)
                     sw_batch_size = 4
-                    val_outputs = sliding_window_inference(
+                    training.val_outputs = sliding_window_inference(
                         val_inputs, roi_size, sw_batch_size, network.model
                     )
-                    val_outputs = [post_pred(i) for i in decollate_batch(val_outputs)]
-                    val_labels = [post_label(i) for i in decollate_batch(val_labels)]
+                    training.val_outputs = [
+                        post_pred(i) for i in decollate_batch(training.val_outputs)
+                    ]
+                    training.val_labels = [
+                        post_label(i) for i in decollate_batch(training.val_labels)
+                    ]
                     # compute metric for current iteration
                     network.dice_metric(y_pred=val_outputs, y=val_labels)
 
@@ -376,24 +413,61 @@ def training_do(
                 # reset the status for next validation round
                 network.dice_metric.reset()
 
-                metric_values.append(metric)
-                if metric > best_metric:
-                    best_metric = metric
-                    best_metric_epoch = epoch + 1
+                training.metric_values.append(metric)
+                if metric > training.best_metric:
+                    training.best_metric = metric
+                    training.best_metric_epoch = epoch + 1
                     torch.save(
                         network.model.state_dict(),
-                        str(outputDir / "best_metric_model.pth"),
+                        str(training.modelPth),
                     )
                     print("saved new best metric model")
                 print(
                     f"current epoch: {epoch + 1} current mean dice: {metric:.4f}"
-                    f"\nbest mean dice: {best_metric:.4f} "
-                    f"at epoch: {best_metric_epoch}"
+                    f"\nbest mean dice: {training.best_metric:.4f} "
+                    f"at epoch: {training.best_metric_epoch}"
                 )
     print(
-        f"train completed, best_metric: {best_metric:.4f} "
-        f"at epoch: {best_metric_epoch}"
+        f"train completed, best_metric: {training.best_metric:.4f} "
+        f"at epoch: {training.best_metric_epoch}"
     )
+    return training
+
+
+def check_plotsDo(
+    metrics: trainingMetrics, data: dict[str, torch.Tensor], i: int
+) -> None:
+    plt.figure("check", (18, 6))
+    plt.subplot(1, 3, 1)
+    plt.title(f"image {i}")
+    plt.imshow(data["image"][0, 0, :, :, 80], cmap="gray")
+    plt.subplot(1, 3, 2)
+    plt.title(f"label {i}")
+    plt.imshow(data["label"][0, 0, :, :, 80])
+    plt.subplot(1, 3, 3)
+    plt.title(f"output {i}")
+    plt.imshow(torch.argmax(metrics.val_outputs, dim=1).detach().cpu()[0, :, :, 80])
+    plt.show()
+
+
+def model_check(
+    network: Model, metrics: trainingMetrics, data_loader: DataLoader
+) -> None:
+    network.model.load_state_dict(torch.load(str(metrics.modelPth)))
+    network.model.eval()
+    with torch.no_grad():
+        for i, val_data in enumerate(data_loader):
+            roi_size = (160, 160, 160)
+            sw_batch_size = 4
+            metrics.val_outputs = sliding_window_inference(
+                val_data["image"].to(network.device),
+                roi_size,
+                sw_batch_size,
+                network.model,
+            )
+            check_plotsDo(metrics, val_data, i)
+            if i == 2:
+                break
 
 
 @chris_plugin(
@@ -417,28 +491,43 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
 
     # pudb.set_trace()
     network: Model = Model(options)
-    trainingMeta: LoaderCache
-    validationMeta: LoaderCache
+    trainingResults: trainingMetrics = trainingMetrics(options)
 
     print(DISPLAY_TITLE)
     print_config()
-    trainingSet, validationSet = inputFiles_splitInto_train_validate(options, inputdir)
+    trainingDataSet, validationSet = inputFiles_splitInto_train_validate(
+        options, inputdir
+    )
 
     set_determinism(seed=0)
     doRandCropbyPosNegLabel: bool = True
-    trainingTransforms: Compose = transforms_setup(doRandCropbyPosNegLabel)
+    trainingDataTransforms: Compose = transforms_setup(doRandCropbyPosNegLabel)
     validationTransforms: Compose = transforms_setup()
 
-    image, label = validationTransforms_check(validationSet, validationTransforms)
+    image, label = transforms_check(validationSet, validationTransforms)
     print(f"image shape: {image.shape}, label shape: {label.shape}")
+    plot_imageAndLabel(image, label, outputdir / "exemplar_image_label.jpg")
 
-    plot_inputAndLabel(image, label, outputdir / "exemplar_image_label.jpg")
+    trainingCache: LoaderCache
+    trainingLoader: DataLoader
 
-    trainingMeta, validationMeta = loaders_create(
-        trainingSet, trainingTransforms, validationSet, validationTransforms
+    trainingCache, trainingLoader = loaderCache_create(
+        trainingDataSet, trainingDataTransforms
     )
 
-    training_do(network, trainingMeta, validationMeta, outputdir)
+    validationCache: LoaderCache
+    validationLoader: DataLoader
+    validationCache, validationLoader = loaderCache_create(
+        validationSet, validationTransforms
+    )
+
+    trainingResults = training_do(
+        trainingResults, network, trainingCache, validationCache, outputdir
+    )
+    plot_trainingMetrics(trainingResults, outputdir / "trainingResults.jpg")
+
+    postTraining_transforms: Compose = transforms_post(validationTransforms)
+
 
 if __name__ == "__main__":
     main()
