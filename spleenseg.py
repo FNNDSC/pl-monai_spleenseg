@@ -49,22 +49,28 @@ __version__ = "1.0.0"
 
 DISPLAY_TITLE = r"""
 
-███████╗██████╗ ██╗     ███████╗███████╗███╗   ██╗███████╗███████╗ ██████╗      ████████╗██████╗  █████╗ ██╗███╗   ██╗
-██╔════╝██╔══██╗██║     ██╔════╝██╔════╝████╗  ██║██╔════╝██╔════╝██╔════╝      ╚══██╔══╝██╔══██╗██╔══██╗██║████╗  ██║
-███████╗██████╔╝██║     █████╗  █████╗  ██╔██╗ ██║███████╗█████╗  ██║  ███╗        ██║   ██████╔╝███████║██║██╔██╗ ██║
-╚════██║██╔═══╝ ██║     ██╔══╝  ██╔══╝  ██║╚██╗██║╚════██║██╔══╝  ██║   ██║        ██║   ██╔══██╗██╔══██║██║██║╚██╗██║
-███████║██║     ███████╗███████╗███████╗██║ ╚████║███████║███████╗╚██████╔╝███████╗██║   ██║  ██║██║  ██║██║██║ ╚████║
-╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝ ╚══════╝╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝
+███████╗██████╗ ██╗     ███████╗███████╗███╗   ██╗███████╗███████╗ ██████╗
+██╔════╝██╔══██╗██║     ██╔════╝██╔════╝████╗  ██║██╔════╝██╔════╝██╔════╝
+███████╗██████╔╝██║     █████╗  █████╗  ██╔██╗ ██║███████╗█████╗  ██║  ███╗
+╚════██║██╔═══╝ ██║     ██╔══╝  ██╔══╝  ██║╚██╗██║╚════██║██╔══╝  ██║   ██║
+███████║██║     ███████╗███████╗███████╗██║ ╚████║███████║███████╗╚██████╔╝
+╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝
 """
 
 
 parser = ArgumentParser(
     description="""
 A ChRIS DS plugin based on Project MONAI 3D Spleen Segmentation.
-This plugin performs the training component, with some gentle
+This plugin implements both training and inference, with some
 refactoring and pervasive type hinting.
     """,
     formatter_class=ArgumentDefaultsHelpFormatter,
+)
+parser.add_argument(
+    "--mode",
+    type=str,
+    default="training",
+    help="mode of behaviour: training or inference",
 )
 parser.add_argument(
     "--trainImageDir",
@@ -472,7 +478,7 @@ def model_check(
 
 @chris_plugin(
     parser=parser,
-    title="Spleen 3D image segmentation training (MONAI)",
+    title="Spleen 3D image segmentation (MONAI)",
     category="",  # ref. https://chrisstore.co/plugins
     min_memory_limit="16Gi",  # supported units: Mi, Gi
     min_cpu_limit="1000m",  # millicores, e.g. "1000m" = 1 CPU core
