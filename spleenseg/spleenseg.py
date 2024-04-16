@@ -145,22 +145,24 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
     print_config()
     neuralNet: neuralnet.NeuralNet = neuralnet.NeuralNet(options)
 
-    trainingDataSet, validationSet = inputFiles_splitInto_train_validate(options)
+    trainingDataSet, validationDataSet = inputFiles_splitInto_train_validate(options)
 
     trainingTransforms, validationTransforms = (
-        transforms.training_and_validation_transformsSetup()
+        transforms.trainingAndValidation_transformsSetup()
     )
-    transformsOK: bool = transforms.transforms_check(
-        outputdir, validationSet, validationTransforms
-    )
-    if not transformsOK:
+    if not transforms.transforms_check(
+        outputdir, validationDataSet, validationTransforms
+    ):
         sys.exit(1)
 
-    # neuralNet.trainingSpace = loaderCache_create(
-    #     trainingDataSet, trainingDataTransforms
-    # )
-    # neuralNet.validationSpace = loaderCache_create(validationSet, validationTransforms)
-    # neuralNet.train()
+    neuralNet.trainingSpace = neuralNet.loaderCache_create(
+        trainingDataSet, trainingTransforms
+    )
+    neuralNet.validationSpace = neuralNet.loaderCache_create(
+        validationDataSet, validationTransforms
+    )
+
+    neuralNet.train()
     #
     # trainingCache: LoaderCache
     # trainingLoader: DataLoader
