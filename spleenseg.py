@@ -6,7 +6,7 @@ from argparse import ArgumentParser, Namespace, ArgumentDefaultsHelpFormatter
 from dataclasses import dataclass
 from dataclasses import dataclass
 
-import os
+import os, sys
 from monai.utils import first, set_determinism
 from monai.transforms import (
     AsDiscrete,
@@ -39,7 +39,7 @@ import tempfile
 import shutil
 import glob
 import pudb
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 import numpy as np
 
 
@@ -91,6 +91,12 @@ parser.add_argument(
     help="GPU/CPU device to use",
 )
 parser.add_argument(
+    "--determinismSeed",
+    type=int,
+    default=42,
+    help="the determinism seed for training/evaluation"
+)
+parser.add_argument(
     "--maxEpochs",
     type=int,
     default=600,
@@ -111,7 +117,38 @@ parser.add_argument(
 
 
 @dataclass
-class Model:
+class LoaderCache:
+    loader: DataLoader
+    cache: CacheDataset
+
+@dataclass
+class TrainingParams:
+    max_epochs: int = 600
+    val_interval = 2
+    epoch_loss_values: list[float] = []
+    metric_values: list[float] = []
+    best_metric: float = -1.0
+    best_metric_epoch = -1
+    modelPth: Path = Path("")
+    modelONNX: Path = Path("")
+    determinismSeed:int = 0
+
+    def __init__(self, options: Namespace):
+        self.options = options
+        if options is not None:
+            self.max_epochs = self.options.maxEpochs
+            self.modelPth = options.outputdir / "model.pth"
+            self.modelONNX = options.outputdir / "model.onnx"
+            self.determinismSeed = self.options.determinismSeed
+            set_determinism(self.determinismSeed)
+
+@dataclass
+class TrainingLog:
+    loss_per_epoch: list[float] = []
+    metric_per_epoch: list[float] = []
+
+@dataclass
+class ModelParams:
     device: torch.device = torch.device("cpu")
     model: UNet = UNet(
         spatial_dims=3,
@@ -122,7 +159,7 @@ class Model:
         num_res_units=2,
         norm=Norm.BATCH,
     )
-    loss_function: DiceLoss = DiceLoss(to_onehot_y=True, softmax=True)
+    fn_loss: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = DiceLoss(to_onehot_y=True, softmax=True)
     optimizer: torch.optim.Adam = None
     dice_metric: DiceMetric = DiceMetric(include_background=False, reduction="mean")
 
@@ -133,11 +170,135 @@ class Model:
             self.model = self.model.to(self.device)
             self.optimizer = torch.optim.Adam(self.model.parameters(), 1e-4)
 
+class NeuralNet:
 
-@dataclass
-class LoaderCache:
-    loader: DataLoader
-    cache: CacheDataset
+    def __init__(self, options: Namespace):
+        self.network: ModelParams = ModelParams(options)
+        self.training: TrainingParams = TrainingParams(options)
+
+        self.input: torch.Tensor|tuple[torch.Tensor, ...]|dict[Any, torch.Tensor]
+        self.output: torch.Tensor|tuple[torch.Tensor, ...]|dict[Any, torch.Tensor]
+        self.target: torch.Tensor|tuple[torch.Tensor, ...]|dict[Any, torch.Tensor]
+
+        self.trainingLog: TrainingLog = TrainingLog()
+
+        self.f_outputPost: Compose = None
+        self.f_labelPost: Compose = None
+
+        self.trainingSpace: LoaderCache
+        self.validationSpace: LoaderCache
+        self.novelSpace: LoaderCache
+
+
+    def tensor_assign(self, to:str, T: torch.Tensor|tuple[torch.Tensor, ...]|dict[Any, torch.Tensor]):
+        if T != None:
+            match(to.lower()):
+                case 'input':
+                    self.input = T
+                case 'output':
+                    self.output = T
+                case 'target':
+                    self.target = T
+                case _:
+                    self.input = T
+        return T
+
+    def feedForward(self, input: torch.Tensor = Optional[None]) -> torch.Tensor | tuple[torch.Tensor, ...] | dict[Any,torch.Tensor]:
+        """
+        Simply run the self.input and generate an output
+        """
+        if input:
+            self.input = input
+        self.output = self.network.model(self.input)
+        return self.output
+
+    def evalAndCorrect(self, input: torch.Tensor, target: torch.Tensor = Optional[None]) -> float:
+        self.network.optimizer.zero_grad()
+        if target:
+            self.target = target
+        f_loss: torch.Tensor = self.network.fn_loss(
+                                    self.feedForward(input), self.target)
+        f_loss.backward()
+        self.network.optimizer.step()
+        return f_loss.item()
+
+    def train_overSampleSpace_retLoss(self, trainingSpace: LoaderCache) -> float:
+        sample: int = 0
+        sample_loss: float = 0.0
+        total_loss: float = 0.0
+        for trainingInstance in trainingSpace.loader:
+            sample += 1
+            self.input, self.target = (
+                trainingInstance["image"].to(self.network.device),
+                trainingInstance["label"].to(self.network.device)
+            )
+            sample_loss = self.evalAndCorrect(self.input, self.target)
+            total_loss += sample_loss
+            print(
+                f"{sample}/{int(trainingSpace.cache) // trainingSpace.loader.batch_size}, "
+                f"sample loss: {sample_loss:.4f}"
+            )
+        total_loss /= sample
+        return total_loss
+
+
+    def train(self, trainingSpace: LoaderCache|None = None, validationSpace: LoaderCache|None = None):
+        epoch: int = 0
+        epoch_loss: float = 0.0
+        if trainingSpace:
+            self.trainingSpace = trainingSpace
+        if validationSpace:
+            self.validationSpace = validationSpace
+        self.network.model.train()
+        for epoch in range(self.training.max_epochs):
+            print("-" * 10)
+            print(f"epoch {epoch:03 + 1} / {self.training.max_epochs}")
+            self.network.model.train()
+            epoch_loss = self.train_overSampleSpace_retLoss(self.trainingSpace)
+            print(f"epoch {epoch:03 + 1}, average loss: {epoch_loss:.4f}")
+            self.trainingLog.loss_per_epoch.append(epoch_loss)
+
+            self.slidingWindowInference_do(self.validationSpace)
+            print(
+                f"current epoch: {epoch + 1}, current mean dice"
+            )
+
+    def inference_metricsProcess(self):
+        metric: float = self.network.dice_metric.aggregate().item()
+        self.trainingLog.metric_per_epoch.append(metric)
+        self.network.dice_metric.reset()
+        if metric > self.training.best_metric:
+            self.training.best_metric = metric
+            self.training.best_metric_epoch = epoch + 1
+            torch.save(
+                self.network.model.state_dict(),
+                str(self.training.modelPth)
+            )
+            print("saved new best metric model")
+
+    def slidingWindowInference_do(self, inferCache: LoaderCache, truthCache: LoaderCache|None = None):
+        self.network.model.eval()
+        with torch.no_grad():
+            for sample in inferCache.loader:
+                input: torch.Tensor = sample["image"].to(self.network.device)
+                roi_size: tuple[int, int, int] = (160, 160, 160)
+                sw_batch_size: int = 4
+                outputRaw: torch.Tensor = sliding_window_inference(
+                    input, roi_size, sw_batch_size, self.network.model
+                )
+                outputPostProc = [
+                    self.f_outputPost(i) for i in decollate_batch(outputRaw)
+                ]
+                if truthCache:
+                    labelTruth: torch.Tensor = sample["label"].to(self.network.device)
+                    labelPostProc = [
+                        self.f_labelPost(i) for i in decollate_batch(labelTruth)
+                    ]
+                    self.network.dice_metric(
+                        y_pred = training.val_outputs, y=training.val_labels
+                    )
+            if truthCache:
+                self.inference_metricsProcess()
 
 
 @dataclass
@@ -165,6 +326,19 @@ class trainingMetrics:
             self.max_epochs = self.options.maxEpochs
             self.modelPth = options.outputdir / "model.pth"
             self.modelONNX = options.outputdir / "model.onnx"
+
+@dataclass
+class inferenceMetrics:
+    image_outputs: torch.Tensor | tuple[torch.Tensor, ...] | dict[Any, torch.Tensor] = (
+        torch.Tensor([])
+    )
+    train_labels: list = []
+    label_outputs: torch.Tensor | tuple[torch.Tensor, ...] | dict[Any, torch.Tensor] = (
+        torch.Tensor([])
+    )
+    val_labels: list = []
+
+
 
 
 def trainingData_prep(options: Namespace, inputDir: Path) -> list[dict[str, str]]:
@@ -201,48 +375,54 @@ def inputFiles_splitInto_train_validate(
     return trainingSet, validateSet
 
 
-def transforms_setup(
-    randCropByPosNegLabeld: bool = False, randAffined: bool = False
-) -> Compose:
-    """
-    Setup transforms for training and validation
 
-    Here we use several transforms to augment the dataset:
-    *. `LoadImaged` loads the spleen CT images and labels from NIfTI format files.
-    *. `EnsureChannelFirstd` ensures the original data to construct "channel first" shape.
-    *. `Orientationd` unifies the data orientation based on the affine matrix.
-    *. `Spacingd` adjusts the spacing by `pixdim=(1.5, 1.5, 2.)` based on the affine matrix.
-    *. `ScaleIntensityRanged` extracts intensity range [-57, 164] and scales to [0, 1].
-    *. `CropForegroundd` removes all zero borders to focus on the valid body area of the images and labels.
-    *. `RandCropByPosNegLabeld` randomly crop patch samples from big image based on pos / neg ratio.
-    The image centers of negative samples must be in valid body area.
-    *. `RandAffined` efficiently performs `rotate`, `scale`, `shear`, `translate`, etc. together based on PyTorch affine transform.
-    """
-    composeList: list = []
-    composeList.append(LoadImaged(keys=["image", "label"]))
-    composeList.append(EnsureChannelFirstd(keys=["image", "label"]))
-    composeList.append(
-        ScaleIntensityRanged(
-            keys=["image"],
-            a_min=-57,
-            a_max=164,
-            b_min=0.0,
-            b_max=1.0,
-            clip=True,
-        )
+"""
+Setup transforms for training and validation
+
+Here we use several transforms to augment the dataset:
+*. `LoadImaged` loads the spleen CT images and labels from NIfTI format files.
+*. `EnsureChannelFirstd` ensures the original data to construct "channel first" shape.
+*. `Orientationd` unifies the data orientation based on the affine matrix.
+*. `Spacingd` adjusts the spacing by `pixdim=(1.5, 1.5, 2.)` based on the affine matrix.
+*. `ScaleIntensityRanged` extracts intensity range [-57, 164] and scales to [0, 1].
+*. `CropForegroundd` removes all zero borders to focus on the valid body area of the images and labels.
+*. `RandCropByPosNegLabeld` randomly crop patch samples from big image based on pos / neg ratio.
+The image centers of negative samples must be in valid body area.
+*. `RandAffined` efficiently performs `rotate`, `scale`, `shear`, `translate`, etc. together based on PyTorch affine transform.
+"""
+
+def f_LoadImaged() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return LoadImaged(keys=["image", "label"])
+
+
+def f_EnsureChannelFirstd() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return EnsureChannelFirstd(keys=["image", "label"])
+
+
+def f_ScaleIntensityRanged() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return ScaleIntensityRanged(
+        keys=["image"], a_min=-57, a_max=164, b_min=0.0, b_max=1.0, clip=True
     )
-    composeList.append(CropForegroundd(keys=["image", "label"], source_key="image"))
-    composeList.append(Orientationd(keys=["image", "label"], axcodes="RAS"))
-    composeList.append(
-        Spacingd(
+
+
+def f_CropForegroundd() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return CropForegroundd(keys=["image", "label"], source_key="image")
+
+
+def f_Orientationd() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return Orientationd(keys=["image", "label"], axcodes="RAS"))
+
+
+def f_Spaceingd() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return Spacingd(
             keys=["image", "label"],
             pixdim=(1.5, 1.5, 2.0),
             mode=("bilinear", "nearest"),
         )
-    )
-    if randCropByPosNegLabeld:
-        composeList.append(
-            RandCropByPosNegLabeld(
+
+
+def f_RandCropByPosNegLabeld() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return RandCropByPosNegLabeld(
                 keys=["image", "label"],
                 label_key="label",
                 spatial_size=(96, 96, 96),
@@ -252,10 +432,10 @@ def transforms_setup(
                 image_key="image",
                 image_threshold=0,
             )
-        )
-    if randAffined:
-        composeList.append(
-            RandAffined(
+
+
+def f_RandAffined() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return RandAffined(
                 keys=["image", "label"],
                 mode=("bilinear", "nearest"),
                 prob=1.0,
@@ -263,15 +443,10 @@ def transforms_setup(
                 rotate_range=(0, 0, np.pi / 15),
                 scale_range=(0.1, 0.1, 0.1),
             )
-        )
-    transforms: Compose = Compose(composeList)
-    return transforms
 
 
-def transforms_post(transform: Compose) -> Compose:
-    composeList: list = []
-    composeList.append(
-        Invertd(
+def f_Invertd(transform: Compose) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return Invertd(
             keys="pred",
             transform=transform,
             orig_keys="image",
@@ -282,23 +457,145 @@ def transforms_post(transform: Compose) -> Compose:
             to_tensor=True,
             device="cpu",
         )
-    )
-    composeList.append(
-        AsDiscreted(keys="pred", argmax=True, to_onehot=2),
-    )
-    composeList.append(AsDiscreted(keys="label", to_onehot=2))
-    transforms: Compose = Compose(composeList)
+
+def f_predAsDiscreted() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return AsDiscreted(keys="pred", argmax=True, to_onehot=2)
+
+def f_labelAsDiscreted() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return AsDiscreted(keys="label", to_onehot=2)
+
+def f_AsDiscreteArgMax() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return AsDiscrete(argmax=True, to_onehot=2)
+
+def f_AsDiscrete() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    return AsDiscrete(to_onehot=2)
+
+def transforms_build(f_transform: list[Callable]) -> Compose:
+    transforms: Compose = Compose(f_transform)
     return transforms
+
+# def transforms_setup(
+#     randCropByPosNegLabeld: bool = False, randAffined: bool = False
+# ) -> Compose:
+#     """
+#     Setup transforms for training and validation
+#
+#     Here we use several transforms to augment the dataset:
+#     *. `LoadImaged` loads the spleen CT images and labels from NIfTI format files.
+#     *. `EnsureChannelFirstd` ensures the original data to construct "channel first" shape.
+#     *. `Orientationd` unifies the data orientation based on the affine matrix.
+#     *. `Spacingd` adjusts the spacing by `pixdim=(1.5, 1.5, 2.)` based on the affine matrix.
+#     *. `ScaleIntensityRanged` extracts intensity range [-57, 164] and scales to [0, 1].
+#     *. `CropForegroundd` removes all zero borders to focus on the valid body area of the images and labels.
+#     *. `RandCropByPosNegLabeld` randomly crop patch samples from big image based on pos / neg ratio.
+#     The image centers of negative samples must be in valid body area.
+#     *. `RandAffined` efficiently performs `rotate`, `scale`, `shear`, `translate`, etc. together based on PyTorch affine transform.
+#     """
+#     composeList: list = []
+#     composeList.append(LoadImaged(keys=["image", "label"]))
+#     composeList.append(EnsureChannelFirstd(keys=["image", "label"]))
+#     composeList.append(
+#         ScaleIntensityRanged(
+#             keys=["image"],
+#             a_min=-57,
+#             a_max=164,
+#             b_min=0.0,
+#             b_max=1.0,
+#             clip=True,
+#         )
+#     )
+#     composeList.append(CropForegroundd(keys=["image", "label"], source_key="image"))
+#     composeList.append(Orientationd(keys=["image", "label"], axcodes="RAS"))
+#     composeList.append(
+#         Spacingd(
+#             keys=["image", "label"],
+#             pixdim=(1.5, 1.5, 2.0),
+#             mode=("bilinear", "nearest"),
+#         )
+#     )
+#     if randCropByPosNegLabeld:
+#         composeList.append(
+#             RandCropByPosNegLabeld(
+#                 keys=["image", "label"],
+#                 label_key="label",
+#                 spatial_size=(96, 96, 96),
+#                 pos=1,
+#                 neg=1,
+#                 num_samples=4,
+#                 image_key="image",
+#                 image_threshold=0,
+#             )
+#         )
+#     if randAffined:
+#         composeList.append(
+#             RandAffined(
+#                 keys=["image", "label"],
+#                 mode=("bilinear", "nearest"),
+#                 prob=1.0,
+#                 spatial_size=(96, 96, 96),
+#                 rotate_range=(0, 0, np.pi / 15),
+#                 scale_range=(0.1, 0.1, 0.1),
+#             )
+#         )
+#     transforms: Compose = Compose(composeList)
+#     return transforms
+#
+
+# def f_Invertd(transform: Compose) -> Callable[[dict[str, Any]], dict[str, Any]]:
+#     return Invertd(
+#             keys="pred",
+#             transform=transform,
+#             orig_keys="image",
+#             meta_keys="pred_meta_dict",
+#             orig_meta_keys="image_meta_dict",
+#             meta_key_postfix="meta_dict",
+#             nearest_interp=False,
+#             to_tensor=True,
+#             device="cpu",
+#         )
+#
+# def f_predAsDiscreted() -> Callable[[dict[str, Any]], dict[str, Any]]:
+#     return AsDiscreted(keys="pred", argmax=True, to_onehot=2)
+#
+# def f_labelAsDiscreted() -> Callable[[dict[str, Any]], dict[str, Any]]:
+#     return AsDiscreted(keys="label", to_onehot=2)
+#
+# def transforms_post(transform: Compose, additionalTransforms: list) -> Compose:
+#     composeList: list = []
+#     composeList.append(
+#         Invertd(
+#             keys="pred",
+#             transform=transform,
+#             orig_keys="image",
+#             meta_keys="pred_meta_dict",
+#             orig_meta_keys="image_meta_dict",
+#             meta_key_postfix="meta_dict",
+#             nearest_interp=False,
+#             to_tensor=True,
+#             device="cpu",
+#         )
+#     )
+#     composeList.append(
+#         AsDiscreted(keys="pred", argmax=True, to_onehot=2),
+#     )
+#     if len(additionalTransforms):
+#         composeList.extend(additionalTransforms)
+#     transforms: Compose = Compose(composeList)
+#     return transforms
 
 
 def transforms_check(
-    files: list[dict[str, str]], transforms: Compose
-) -> tuple[torch.Tensor, torch.Tensor]:
+    outputdir: Path, files: list[dict[str, str]], transforms: Compose
+) -> bool:
     check_ds: Dataset = Dataset(data=files, transform=transforms)
     check_loader: DataLoader = DataLoader(check_ds, batch_size=1)
     check_data: Any | None = first(check_loader)
+    if not check_data:
+        return False
     image, label = (check_data["image"][0][0], check_data["label"][0][0])
-    return image, label
+    print(f"image shape: {image.shape}, label shape: {label.shape}")
+    plot_imageAndLabel(image, label, outputdir / "exemplar_image_label.jpg")
+    return True
 
 
 def plot_imageAndLabel(
@@ -328,20 +625,27 @@ def plot_trainingMetrics(training: trainingMetrics, savefile: Path) -> None:
     y = training.metric_values
     plt.xlabel("epoch")
     plt.plot(x, y)
-    plt.show()
+    plt.savefig(str(savefile))
 
 
 def loaderCache_create(
     fileList: list[dict[str, str]], transforms: Compose, batch_size: int = 2
-) -> tuple[LoaderCache, DataLoader]:
+) -> LoaderCache:
     """
     ## Define CacheDataset and DataLoader for training and validation
 
-    Here we use CacheDataset to accelerate training and validation process, it's 10x faster than the regular Dataset.
-    To achieve best performance, set `cache_rate=1.0` to cache all the data, if memory is not enough, set lower value.
-    Users can also set `cache_num` instead of `cache_rate`, will use the minimum value of the 2 settings.
-    And set `num_workers` to enable multi-threads during caching.
-    If want to to try the regular Dataset, just change to use the commented code below.
+    Here we use CacheDataset to accelerate training and validation process,
+    it's 10x faster than the regular Dataset.
+
+    To achieve best performance, set `cache_rate=1.0` to cache all the data,
+    if memory is not enough, set lower value.
+
+    Users can also set `cache_num` instead of `cache_rate`, will use the
+    minimum value of the 2 settings.
+
+    Set `num_workers` to enable multi-threads during caching.
+
+    NB: Parameterize all params!!
     """
     ds: CacheDataset = CacheDataset(
         data=fileList, transform=transforms, cache_rate=1.0, num_workers=4
@@ -352,13 +656,13 @@ def loaderCache_create(
     loader: DataLoader = DataLoader(
         ds, batch_size=batch_size, shuffle=True, num_workers=4
     )
-    cache: LoaderCache = LoaderCache(cache=ds, loader=loader)
-    return cache, loader
+    loaderCache: LoaderCache = LoaderCache(cache=ds, loader=loader)
+    return loaderCache
 
 
 def training_do(
     training: trainingMetrics,
-    network: Model,
+    network: ModelParams,
     trainMeta: LoaderCache,
     valMeta: LoaderCache,
     outputDir: Path,
@@ -412,7 +716,9 @@ def training_do(
                         post_label(i) for i in decollate_batch(training.val_labels)
                     ]
                     # compute metric for current iteration
-                    network.dice_metric(y_pred=val_outputs, y=val_labels)
+                    network.dice_metric(
+                        y_pred=training.val_outputs, y=training.val_labels
+                    )
 
                 # aggregate the final mean dice result
                 metric = network.dice_metric.aggregate().item()
@@ -440,40 +746,81 @@ def training_do(
     return training
 
 
-def check_plotsDo(
-    metrics: trainingMetrics, data: dict[str, torch.Tensor], i: int
+def IO_plotsDo(
+    input: dict[str, torch.Tensor], output: torch.Tensor, title: str
 ) -> None:
     plt.figure("check", (18, 6))
     plt.subplot(1, 3, 1)
-    plt.title(f"image {i}")
-    plt.imshow(data["image"][0, 0, :, :, 80], cmap="gray")
+    plt.title(f"image {title}")
+    plt.imshow(input["image"][0, 0, :, :, 80], cmap="gray")
     plt.subplot(1, 3, 2)
-    plt.title(f"label {i}")
-    plt.imshow(data["label"][0, 0, :, :, 80])
+    plt.title(f"label {title}")
+    plt.imshow(input["label"][0, 0, :, :, 80])
     plt.subplot(1, 3, 3)
-    plt.title(f"output {i}")
-    plt.imshow(torch.argmax(metrics.val_outputs, dim=1).detach().cpu()[0, :, :, 80])
+    plt.title(f"output {title}")
+    plt.imshow(torch.argmax(output, dim=1).detach().cpu()[0, :, :, 80])
     plt.show()
 
 
-def model_check(
-    network: Model, metrics: trainingMetrics, data_loader: DataLoader
-) -> None:
+def inferenceOverDataSpace_do(
+    network: ModelData,
+    data_loader: DataLoader,
+    data_transforms: Compose = None,
+    doPlots: bool = False,
+    earlyExit: int = 0,
+) -> tuple[torch.Tensor, float]:
     network.model.load_state_dict(torch.load(str(metrics.modelPth)))
     network.model.eval()
+    output: torch.Tensor = torch.Tensor(())
+    input: torch.Tensor
+    postData: list[dict[str, Any]] = []
+    diceMetric: DiceMetric = DiceMetric(include_background=True, reduction="mean")
+    metric: float = 0
     with torch.no_grad():
-        for i, val_data in enumerate(data_loader):
+        for i, inputdata in enumerate(data_loader):
             roi_size = (160, 160, 160)
             sw_batch_size = 4
-            metrics.val_outputs = sliding_window_inference(
-                val_data["image"].to(network.device),
+            input = inputdata["image"].to(network.device)
+            output = sliding_window_inference(
+                input,
                 roi_size,
                 sw_batch_size,
                 network.model,
             )
-            check_plotsDo(metrics, val_data, i)
-            if i == 2:
+            if doPlots:
+                IO_plotsDo(inputdata, output, f"{i}")
+            if earlyExit and earlyExit == i:
                 break
+            if data_transforms:
+                postData = [data_transforms(j) for j in decollate_batch(inputdata)]
+                postOutputs, postLabels = from_engine(["pred", "label"])(postData)
+                diceMetric(y_pred=postOutputs, y=postLabels)
+        if data_transforms:
+            metric = diceMetric.aggregate().item()
+            diceMetric.reset()
+
+    return output, metric
+
+
+def inference_validateCheck(network: ModelData, validationLoader: DataLoader) -> None:
+    doPlots: bool = True
+    exitOnLoop2: int = 2
+    transformNone = None
+    inferenceOverDataSpace_do(
+        network, validationLoader, transformNone, doPlots, exitOnLoop2
+    )
+
+
+def inference_diceMetricGet(
+    network: ModelData, validationLoader: DataLoader, transforms: Compose
+) -> float:
+    plotFalse: bool = False
+    output: torch.Tensor
+    metric: float
+    output, metric = inferenceOverDataSpace_do(
+        network, validationLoader, transforms, plotFalse
+    )
+    return metric
 
 
 @chris_plugin(
@@ -496,43 +843,74 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
     """
 
     # pudb.set_trace()
-    network: Model = Model(options)
-    trainingResults: trainingMetrics = trainingMetrics(options)
+
+
+    # network: ModelData = ModelData(options)
+    # trainingResults: trainingMetrics = trainingMetrics(options)
 
     print(DISPLAY_TITLE)
     print_config()
+    neuralNet: NeuralNet = NeuralNet(options)
+
     trainingDataSet, validationSet = inputFiles_splitInto_train_validate(
         options, inputdir
     )
 
-    set_determinism(seed=0)
-    doRandCropbyPosNegLabel: bool = True
-    trainingDataTransforms: Compose = transforms_setup(doRandCropbyPosNegLabel)
-    validationTransforms: Compose = transforms_setup()
+    # set_determinism(seed=0)
+    f_TrainingTransforms: list[Callable[dict[str, Any]], dict[str, Any]] = [
+             f_LoadImaged,
+             f_EnsureChannelFirstd,
+             f_ScaleIntensityRanged,
+             f_CropForegroundd,
+             f_Orientationd,
+             f_Spaceingd
+    ]
+    trainingDataTransforms: Compose = transforms_build(
+        f_TrainingTransforms + [f_RandCropByPosNegLabeld]
+    )
+    validationTransforms: Compose = transforms_build(f_TrainingTransforms)
 
-    image, label = transforms_check(validationSet, validationTransforms)
-    print(f"image shape: {image.shape}, label shape: {label.shape}")
-    plot_imageAndLabel(image, label, outputdir / "exemplar_image_label.jpg")
+    transformsOK: bool = transforms_check(
+        outputdir, validationSet, validationTransforms
+    )
+    if not transformsOK:
+        sys.exit(1)
 
-    trainingCache: LoaderCache
-    trainingLoader: DataLoader
-
-    trainingCache, trainingLoader = loaderCache_create(
+    neuralNet.trainingSpace = loaderCache_create(
         trainingDataSet, trainingDataTransforms
     )
-
-    validationCache: LoaderCache
-    validationLoader: DataLoader
-    validationCache, validationLoader = loaderCache_create(
+    neuralNet.validationSpace = loaderCache_create(
         validationSet, validationTransforms
     )
+    neuralNet.train()
 
+    # trainingCache: LoaderCache
+    # trainingLoader: DataLoader
+    #
+    # trainingCache, trainingLoader = loaderCache_create(
+    #     trainingDataSet, trainingDataTransforms
+    # )
+    #
+    # validationCache: LoaderCache
+    # validationLoader: DataLoader
+    # validationCache, validationLoader = loaderCache_create(
+    #     validationSet, validationTransforms
+    # )
+    #
     trainingResults = training_do(
         trainingResults, network, trainingCache, validationCache, outputdir
     )
     plot_trainingMetrics(trainingResults, outputdir / "trainingResults.jpg")
 
-    postTraining_transforms: Compose = transforms_post(validationTransforms)
+    inference_validateCheck(network, validationLoader)
+
+    postTraining_transforms: Compose = transforms_build(
+        [
+            f_Invertd(validationTransforms),
+            f_predAsDiscreted,
+            f_labelAsDiscreted
+        ]
+    )
 
 
 if __name__ == "__main__":
