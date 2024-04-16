@@ -19,20 +19,42 @@ def get_version(rel_path: str) -> str:
         return version.group(0)
 
 
+requirements = []
+with open("requirements.txt") as f:
+    requirements = [
+        line.strip()
+        for line in f.readlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def readme():
+    with open("README.md") as f:
+        return f.read()
+
+
 setup(
-    name="monai_spleenseg_train",
-    description="A ChRIS based off project MONAI's spleen segmenation notebook (training only)",
+    name="spleenseg",
+    description="A ChRIS DS plugin heavily hacked off project MONAI's spleen segmenation notebook",
+    long_description=readme(),
     author="FNNDSC",
     author_email="dev@babyMRI.org",
-    url="https://github.com/FNNDSC/pl-monai_spleenseg_train",
-    py_modules=["spleenseg_train"],
-    install_requires=["chris_plugin"],
+    url="https://github.com/FNNDSC/pl-monai_spleenseg",
+    packages=[
+        "spleenseg",
+        "spleenseg/core",
+        "spleenseg/plotting",
+        "spleenseg/transforms",
+    ],
+    install_requires=requirements,
+    data_files=[("", ["requirements.txt"])],
     license="MIT",
-    entry_points={"console_scripts": ["spleenseg_train = spleenseg_train:main"]},
+    entry_points={"console_scripts": ["spleenseg = spleenseg.spleenseg:main"]},
     classifiers=[
         "License :: OSI Approved :: MIT License",
         "Topic :: Scientific/Engineering",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
+        "Topic :: Scientific/Engineering :: MONAI/AI",
         "Topic :: Scientific/Engineering :: Medical Science Apps.",
     ],
     extras_require={"none": [], "dev": ["pytest~=7.1"]},
