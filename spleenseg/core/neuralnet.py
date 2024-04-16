@@ -2,42 +2,49 @@
 
 from collections.abc import Iterable
 from pathlib import Path
-from argparse import ArgumentParser, Namespace, ArgumentDefaultsHelpFormatter
+from argparse import Namespace
 from dataclasses import dataclass, field
 
 import os, sys
+from monai.transforms.compose import Compose
 from monai.utils import first, set_determinism
-from monai.transforms import (
-    AsDiscrete,
-    AsDiscreted,
-    EnsureChannelFirstd,
-    Compose,
-    CropForegroundd,
-    LoadImaged,
-    Orientationd,
-    RandCropByPosNegLabeld,
-    RandAffined,
-    SaveImaged,
-    ScaleIntensityRanged,
-    Spacingd,
-    Invertd,
-)
+
+# from monai.transforms import (
+#     AsDiscrete,
+#     AsDiscreted,
+#     EnsureChannelFirstd,
+#     Compose,
+#     CropForegroundd,
+#     LoadImaged,
+#     Orientationd,
+#     RandCropByPosNegLabeld,
+#     RandAffined,
+#     SaveImaged,
+#     ScaleIntensityRanged,
+#     Spacingd,
+#     Invertd,
+# )
 from monai.handlers.utils import from_engine
-from monai.networks.nets import UNet
-from monai.transforms import LoadImage
-from monai.networks.layers import Norm
-from monai.metrics import DiceMetric
-from monai.losses import DiceLoss
-from monai.inferers import sliding_window_inference
-from monai.data import CacheDataset, DataLoader, Dataset, decollate_batch
-from monai.config import print_config
-from monai.apps import download_and_extract
+from monai.networks.nets.unet import UNet
+
+# from monai.transforms import LoadImage
+from monai.networks.layers.factories import Norm
+from monai.metrics.meandice import DiceMetric
+from monai.losses.dice import DiceLoss
+from monai.inferers.utils import sliding_window_inference
+from monai.data.dataset import CacheDataset
+from monai.data.dataloader import DataLoader
+from monai.data.dataset import Dataset
+from monai.data.utils import decollate_batch
+from monai.config.deviceconfig import print_config
+from monai.apps.utils import download_and_extract
 import torch
-import matplotlib.pyplot as plt
-import tempfile
-import shutil
-import glob
-import pudb
+
+# import matplotlib.pyplot as plt
+# import tempfile
+# import shutil
+# import glob
+# import pudb
 from typing import Any, Optional, Callable
 import numpy as np
 
@@ -76,6 +83,7 @@ class TrainingLog:
 
 @dataclass
 class ModelParams:
+    optimizer: torch.optim.Adam
     device: torch.device = torch.device("cpu")
     model: UNet = UNet(
         spatial_dims=3,
@@ -89,7 +97,6 @@ class ModelParams:
     fn_loss: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = DiceLoss(
         to_onehot_y=True, softmax=True
     )
-    optimizer: torch.optim.Adam | None = None
     dice_metric: DiceMetric = DiceMetric(include_background=False, reduction="mean")
 
     def __init__(self, options: Namespace):
@@ -118,12 +125,43 @@ class NeuralNet:
         self.validationSpace: LoaderCache
         self.novelSpace: LoaderCache
 
+    def loaderCache_create(
+        self, fileList: list[dict[str, str]], transforms: Compose, batch_size: int = 2
+    ) -> LoaderCache:
+        """
+        ## Define CacheDataset and DataLoader for training and validation
+
+        Here we use CacheDataset to accelerate training and validation process,
+        it's 10x faster than the regular Dataset.
+
+        To achieve best performance, set `cache_rate=1.0` to cache all the data,
+        if memory is not enough, set lower value.
+
+        Users can also set `cache_num` instead of `cache_rate`, will use the
+        minimum value of the 2 settings.
+
+        Set `num_workers` to enable multi-threads during caching.
+
+        NB: Parameterize all params!!
+        """
+        ds: CacheDataset = CacheDataset(
+            data=fileList, transform=transforms, cache_rate=1.0, num_workers=4
+        )
+
+        # use batch_size=2 to load images and use RandCropByPosNegLabeld
+        # to generate 2 x 4 images for network training
+        loader: DataLoader = DataLoader(
+            ds, batch_size=batch_size, shuffle=True, num_workers=4
+        )
+        loaderCache: LoaderCache = LoaderCache(cache=ds, loader=loader)
+        return loaderCache
+
     def tensor_assign(
         self,
         to: str,
         T: torch.Tensor | tuple[torch.Tensor, ...] | dict[Any, torch.Tensor],
     ):
-        if T != None:
+        if T is not None:
             match to.lower():
                 case "input":
                     self.input = T
@@ -136,7 +174,7 @@ class NeuralNet:
         return T
 
     def feedForward(
-        self, input: torch.Tensor = Optional[None]
+        self, input: Optional[torch.Tensor] = None
     ) -> torch.Tensor | tuple[torch.Tensor, ...] | dict[Any, torch.Tensor]:
         """
         Simply run the self.input and generate an output
@@ -147,13 +185,14 @@ class NeuralNet:
         return self.output
 
     def evalAndCorrect(
-        self, input: torch.Tensor, target: torch.Tensor = Optional[None]
+        self, input: torch.Tensor, target: Optional[torch.Tensor] = None
     ) -> float:
         self.network.optimizer.zero_grad()
-        if target:
+        if target is not None:
             self.target = target
+
         f_loss: torch.Tensor = self.network.fn_loss(
-            self.feedForward(input), self.target
+            torch.as_tensor(self.feedForward(input)), torch.as_tensor(self.target)
         )
         f_loss.backward()
         self.network.optimizer.step()
@@ -171,10 +210,14 @@ class NeuralNet:
             )
             sample_loss = self.evalAndCorrect(self.input, self.target)
             total_loss += sample_loss
-            print(
-                f"{sample}/{int(trainingSpace.cache) // trainingSpace.loader.batch_size}, "
-                f"sample loss: {sample_loss:.4f}"
-            )
+            if (
+                trainingSpace.cache is not None
+                and trainingSpace.loader.batch_size is not None
+            ):
+                print(
+                    f"{sample}/{len(trainingSpace.cache) // trainingSpace.loader.batch_size}, "
+                    f"sample loss: {sample_loss:.4f}"
+                )
         total_loss /= sample
         return total_loss
 
@@ -192,10 +235,10 @@ class NeuralNet:
         self.network.model.train()
         for epoch in range(self.training.max_epochs):
             print("-" * 10)
-            print(f"epoch {epoch:03 + 1} / {self.training.max_epochs}")
+            print(f"epoch {epoch+1:03} / {self.training.max_epochs}")
             self.network.model.train()
             epoch_loss = self.train_overSampleSpace_retLoss(self.trainingSpace)
-            print(f"epoch {epoch:03 + 1}, average loss: {epoch_loss:.4f}")
+            print(f"epoch {epoch+1:03}, average loss: {epoch_loss:.4f}")
             self.trainingLog.loss_per_epoch.append(epoch_loss)
 
             self.slidingWindowInference_do(self.validationSpace)
@@ -220,8 +263,10 @@ class NeuralNet:
                 input: torch.Tensor = sample["image"].to(self.network.device)
                 roi_size: tuple[int, int, int] = (160, 160, 160)
                 sw_batch_size: int = 4
-                outputRaw: torch.Tensor = sliding_window_inference(
-                    input, roi_size, sw_batch_size, self.network.model
+                outputRaw: torch.Tensor = torch.as_tensor(
+                    sliding_window_inference(
+                        input, roi_size, sw_batch_size, self.network.model
+                    )
                 )
                 outputPostProc = [
                     self.f_outputPost(i) for i in decollate_batch(outputRaw)
