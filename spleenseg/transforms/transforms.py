@@ -143,7 +143,7 @@ def transforms_build(f_transform: list[Callable]) -> Compose:
     return transforms
 
 
-def training_and_validation_transformsSetup() -> tuple[Compose, Compose]:
+def trainingAndValidation_transformsSetup() -> tuple[Compose, Compose]:
     baseTrainingTransforms: list = [
         f_LoadImaged(),
         f_EnsureChannelFirstd(),
