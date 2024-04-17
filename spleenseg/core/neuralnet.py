@@ -299,14 +299,19 @@ class NeuralNet:
                     )
                 )
                 outputPostProc = [
-                    self.f_outputPost(i) for i in decollate_batch(outputRaw)
+                    self.f_outputPost(i)
+                    for i in decollate_batch(outputRaw)  # type: ignore[arg-type]
                 ]
                 if epoch is not None:
                     labelTruth: torch.Tensor = sample["label"].to(self.network.device)
                     labelPostProc = [
-                        self.f_labelPost(i) for i in decollate_batch(labelTruth)
+                        self.f_labelPost(i)
+                        for i in decollate_batch(labelTruth)  # type: ignore[arg-type]
                     ]
-                    self.network.dice_metric(y_pred=outputPostProc, y=labelPostProc)
+                    self.network.dice_metric(
+                        y_pred=outputPostProc,  # type: ignore
+                        y=labelPostProc,  # type: ignore
+                    )
             if epoch is not None:
                 metric = self.inference_metricsProcess(epoch)
         return metric
