@@ -172,7 +172,7 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
         trainingFileSet, trainingTransforms
     )
     neuralNet.validationSpace = neuralNet.loaderCache_create(
-        validationFileSet, validationTransforms
+        validationFileSet, validationTransforms, 1
     )
 
     neuralNet.train()
