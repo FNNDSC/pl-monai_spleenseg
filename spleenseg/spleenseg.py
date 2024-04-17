@@ -6,8 +6,12 @@ from argparse import ArgumentParser, Namespace, ArgumentDefaultsHelpFormatter
 from dataclasses import dataclass
 
 from monai.config.deviceconfig import print_config
+from contextlib import redirect_stderr
+from io import StringIO
 
-import os, sys
+# import os
+import sys
+import re
 import pudb
 from typing import Any, Optional, Callable
 
@@ -108,7 +112,7 @@ def trainingData_prep(options: Namespace) -> list[dict[str, str]]:
     ]
 
 
-def inputFiles_splitInto_train_validate(
+def inputFilesSets_trainValidateFind(
     options: Namespace,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
     """
@@ -119,6 +123,15 @@ def inputFiles_splitInto_train_validate(
     trainingSet: list[dict[str, str]] = trainingSpace[: -options.validateSize]
     validateSet: list[dict[str, str]] = trainingSpace[-options.validateSize :]
     return trainingSet, validateSet
+
+
+def envDetail_print(options: Namespace, **kwargs):
+    """
+    Custom version of print_config() that suppresses the optional dependencies message.
+    """
+    print(DISPLAY_TITLE)
+    print(f"Device = {options.device}")
+    print_config()
 
 
 @chris_plugin(
@@ -142,24 +155,24 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
 
     pudb.set_trace()
 
-    print_config()
+    envDetail_print(options)
     neuralNet: neuralnet.NeuralNet = neuralnet.NeuralNet(options)
 
-    trainingDataSet, validationDataSet = inputFiles_splitInto_train_validate(options)
+    trainingFileSet, validationFileSet = inputFilesSets_trainValidateFind(options)
 
     trainingTransforms, validationTransforms = (
         transforms.trainingAndValidation_transformsSetup()
     )
     if not transforms.transforms_check(
-        outputdir, validationDataSet, validationTransforms
+        outputdir, validationFileSet, validationTransforms
     ):
         sys.exit(1)
 
     neuralNet.trainingSpace = neuralNet.loaderCache_create(
-        trainingDataSet, trainingTransforms
+        trainingFileSet, trainingTransforms
     )
     neuralNet.validationSpace = neuralNet.loaderCache_create(
-        validationDataSet, validationTransforms
+        validationFileSet, validationTransforms
     )
 
     neuralNet.train()
