@@ -25,8 +25,6 @@ class LoaderCache:
 class TrainingParams:
     max_epochs: int = 600
     val_interval = 2
-    best_metric: float = -1.0
-    best_metric_epoch = -1
     modelPth: Path = Path("")
     modelONNX: Path = Path("")
     determinismSeed: int = 0
@@ -35,20 +33,24 @@ class TrainingParams:
         self.options = options
         if options is not None:
             self.max_epochs = self.options.maxEpochs
+            self.outputDir = Path(self.options.outputdir)
             self.modelPth = Path(options.outputdir) / "model.pth"
             self.modelONNX = Path(options.outputdir) / "model.onnx"
             self.determinismSeed = self.options.determinismSeed
-            set_determinism(self.determinismSeed)
+            set_determinism(seed=self.determinismSeed)
 
 
 @dataclass
 class TrainingLog:
     loss_per_epoch: list[float] = field(default_factory=list)
     metric_per_epoch: list[float] = field(default_factory=list)
+    best_metric: float = -1.0
+    best_metric_epoch = -1
 
 
 @dataclass
 class ModelParams:
+    optimizer: torch.optim.Adam
     device: torch.device = torch.device("cpu")
     model: UNet = UNet(
         spatial_dims=3,
@@ -62,12 +64,12 @@ class ModelParams:
     fn_loss: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = DiceLoss(
         to_onehot_y=True, softmax=True
     )
-    optimizer: torch.optim.Adam | None = None
     dice_metric: DiceMetric = DiceMetric(include_background=False, reduction="mean")
 
     def __init__(self, options: Namespace):
         self.options = options
         if options is not None:
             self.device = torch.device(self.options.device)
+            torch.manual_seed(42)
             self.model = self.model.to(self.device)
             self.optimizer = torch.optim.Adam(self.model.parameters(), 1e-4)
