@@ -20,24 +20,28 @@ def plot_imageAndLabel(
     plt.savefig(str(savefile))
 
 
-def plot_trainingMetrics(training: data.TrainingLog, savefile: Path) -> None:
+def plot_trainingMetrics(
+    log: data.TrainingLog, training: data.TrainingParams, savefile: Path
+) -> None:
     plt.figure("train", (12, 6))
     plt.subplot(1, 2, 1)
     plt.title("Epoch Average Loss")
-    x = [i + 1 for i in range(len(training.loss_per_epoch))]
-    y = training.loss_per_epoch
+    x = [i + 1 for i in range(len(log.loss_per_epoch))]
+    y = log.loss_per_epoch
     plt.xlabel("epoch")
     plt.plot(x, y)
     plt.subplot(1, 2, 2)
     plt.title("Val Mean Dice")
-    x = [training.val_interval * (i + 1) for i in range(len(training.metric_values))]
-    y = training.metric_values
+    x = [training.val_interval * (i + 1) for i in range(len(log.metric_per_epoch))]
+    y = log.metric_per_epoch
     plt.xlabel("epoch")
     plt.plot(x, y)
     plt.savefig(str(savefile))
 
 
-def plot_IODo(input: dict[str, torch.Tensor], output: torch.Tensor, title: str) -> None:
+def plot_bestModelOnValidate(
+    input: dict[str, torch.Tensor], output: torch.Tensor, title: str, savefile: Path
+) -> None:
     plt.figure("check", (18, 6))
     plt.subplot(1, 3, 1)
     plt.title(f"image {title}")
@@ -48,4 +52,4 @@ def plot_IODo(input: dict[str, torch.Tensor], output: torch.Tensor, title: str) 
     plt.subplot(1, 3, 3)
     plt.title(f"output {title}")
     plt.imshow(torch.argmax(output, dim=1).detach().cpu()[0, :, :, 80])
-    plt.show()
+    plt.savefig(str(savefile))
