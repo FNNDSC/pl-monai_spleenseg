@@ -5,6 +5,7 @@ from pathlib import Path
 from argparse import ArgumentParser, Namespace, ArgumentDefaultsHelpFormatter
 from dataclasses import dataclass
 
+from matplotlib.pyplot import plot
 from monai.config.deviceconfig import print_config
 from contextlib import redirect_stderr
 from io import StringIO
@@ -17,6 +18,7 @@ from typing import Any, Optional, Callable
 
 from spleenseg.core import neuralnet
 from spleenseg.transforms import transforms
+from spleenseg.plotting import plotting
 
 from chris_plugin import chris_plugin, PathMapper
 
@@ -176,6 +178,15 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
     )
 
     neuralNet.train()
+
+    plotting.plot_trainingMetrics(
+        neuralNet.trainingLog,
+        neuralNet.trainingParams,
+        neuralNet.trainingParams.outputDir / "trainingLog.png",
+    )
+
+    neuralNet.bestModel_runOverValidationSpace()
+
     #
     # trainingCache: LoaderCache
     # trainingLoader: DataLoader
