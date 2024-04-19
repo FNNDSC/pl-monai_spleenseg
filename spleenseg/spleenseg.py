@@ -62,6 +62,12 @@ parser.add_argument(
     help="name of directory containing training labels",
 )
 parser.add_argument(
+    "--testImageDir",
+    type=str,
+    default="imagesTs",
+    help="name of directory containing test data",
+)
+parser.add_argument(
     "--device",
     type=str,
     default="cpu",
@@ -112,6 +118,18 @@ def trainingData_prep(options: Namespace) -> list[dict[str, str]]:
         {"image": str(image_name), "label": str(label_name)}
         for image_name, label_name in zip(trainRaw, trainLbl)
     ]
+
+
+def testingData_prep(options: Namespace) -> list[dict[str, str]]:
+    """
+    Generates a list of dictionary entries, each of which is simply the name
+    of a test image file with its location
+    """
+    testRaw: list[Path] = []
+    for path in Path(options.inputdir).rglob(options.testImageDir):
+        testRaw.extend(path.glob(options.pattern))
+    testRaw.sort()
+    return [{"image": str(image_name)} for image_name in testRaw]
 
 
 def inputFilesSets_trainValidateFind(
@@ -186,6 +204,7 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
     )
 
     neuralNet.bestModel_runOverValidationSpace()
+    neuralNet.bestModel_evaluateImageSpacings(validationTransforms)
 
     #
     # trainingCache: LoaderCache
