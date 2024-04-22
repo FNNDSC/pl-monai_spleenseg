@@ -70,6 +70,6 @@ class ModelParams:
         self.options = options
         if options is not None:
             self.device = torch.device(self.options.device)
-            torch.manual_seed(42)
+            # torch.manual_seed(42)
             self.model = self.model.to(self.device)
             self.optimizer = torch.optim.Adam(self.model.parameters(), 1e-4)
