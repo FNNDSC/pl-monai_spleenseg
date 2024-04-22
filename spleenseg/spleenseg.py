@@ -19,6 +19,13 @@ from typing import Any, Optional, Callable
 from spleenseg.core import neuralnet
 from spleenseg.transforms import transforms
 from spleenseg.plotting import plotting
+import warnings
+from pyfiglet import Figlet
+
+warnings.filterwarnings(
+    "ignore",
+    message="For details about installing the optional dependencies, please visit:",
+)
 
 from chris_plugin import chris_plugin, PathMapper
 
@@ -48,6 +55,12 @@ parser.add_argument(
     type=str,
     default="training",
     help="mode of behaviour: training or inference",
+)
+parser.add_argument(
+    "--useModel",
+    type=str,
+    default="model.pth",
+    help="model to use for inference processing",
 )
 parser.add_argument(
     "--trainImageDir",
@@ -150,8 +163,56 @@ def envDetail_print(options: Namespace, **kwargs):
     Custom version of print_config() that suppresses the optional dependencies message.
     """
     print(DISPLAY_TITLE)
+    f = Figlet(font="doom")
+    print(f.renderText(f"{options.mode}"))
     print(f"Device = {options.device}")
     print_config()
+
+
+def env_outputDirsMake(options: Namespace) -> None:
+    if "training" in options.mode:
+        Path(Path(options.outputdir) / "training").mkdir(parents=True, exist_ok=True)
+        Path(Path(options.outputdir) / "validation").mkdir(parents=True, exist_ok=True)
+    if "inference" in options.mode:
+        Path(Path(options.outputdir) / "inference").mkdir(parents=True, exist_ok=True)
+
+
+def training_do(neuralNet: neuralnet.NeuralNet, options: Namespace) -> bool:
+    trainingOK: bool = True
+
+    neuralNet.trainingFileSet, neuralNet.validationFileSet = (
+        inputFilesSets_trainValidateFind(options)
+    )
+
+    if not neuralNet.trainingTransformsAndSpace_setup():
+        return False
+
+    if options.mode == "training":
+        neuralNet.train()
+
+    plotting.plot_trainingMetrics(
+        neuralNet.trainingLog,
+        neuralNet.trainingParams,
+        neuralNet.trainingParams.outputDir / "training" / "trainingLog.png",
+    )
+
+    neuralNet.bestModel_runOverValidationSpace()
+
+    neuralNet.bestModel_evaluateImageSpacings()
+    return trainingOK
+
+
+def inference_do(neuralNet: neuralnet.NeuralNet, options: Namespace) -> bool:
+    inferenceOK: bool = True
+    neuralNet.testingFileSet = testingData_prep(options)
+
+    modelFile: Path = Path(Path(options.inputdir) / options.useModel)
+    if not modelFile.exists():
+        raise FileNotFoundError(f"The model '{modelFile}' does not exist.")
+
+    neuralNet.infer_usingModel(modelFile)
+
+    return inferenceOK
 
 
 @chris_plugin(
@@ -176,60 +237,13 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
     pudb.set_trace()
 
     envDetail_print(options)
+    env_outputDirsMake(options)
     neuralNet: neuralnet.NeuralNet = neuralnet.NeuralNet(options)
+    if "training" in options.mode:
+        training_do(neuralNet, options)
 
-    trainingFileSet, validationFileSet = inputFilesSets_trainValidateFind(options)
-
-    trainingTransforms, validationTransforms = (
-        transforms.trainingAndValidation_transformsSetup()
-    )
-    if not transforms.transforms_check(
-        outputdir, validationFileSet, validationTransforms
-    ):
-        sys.exit(1)
-
-    neuralNet.trainingSpace = neuralNet.loaderCache_create(
-        trainingFileSet, trainingTransforms
-    )
-    neuralNet.validationSpace = neuralNet.loaderCache_create(
-        validationFileSet, validationTransforms, 1
-    )
-
-    neuralNet.train()
-
-    plotting.plot_trainingMetrics(
-        neuralNet.trainingLog,
-        neuralNet.trainingParams,
-        neuralNet.trainingParams.outputDir / "trainingLog.png",
-    )
-
-    neuralNet.bestModel_runOverValidationSpace()
-    neuralNet.bestModel_evaluateImageSpacings(validationTransforms)
-
-    #
-    # trainingCache: LoaderCache
-    # trainingLoader: DataLoader
-    #
-    # trainingCache, trainingLoader = loaderCache_create(
-    #     trainingDataSet, trainingDataTransforms
-    # )
-    #
-    # validationCache: LoaderCache
-    # validationLoader: DataLoader
-    # validationCache, validationLoader = loaderCache_create(
-    #     validationSet, validationTransforms
-    # )
-    #
-    # trainingResults = training_do(
-    #     trainingResults, network, trainingCache, validationCache, outputdir
-    # )
-    # plot_trainingMetrics(trainingResults, outputdir / "trainingResults.jpg")
-    #
-    # inference_validateCheck(network, validationLoader)
-    #
-    # postTraining_transforms: Compose = transforms_build(
-    #     [f_Invertd(validationTransforms), f_predAsDiscreted, f_labelAsDiscreted]
-    # )
+    if "inference" in options.mode:
+        inference_do(neuralNet, options)
 
 
 if __name__ == "__main__":
