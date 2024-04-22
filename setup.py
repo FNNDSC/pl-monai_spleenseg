@@ -55,7 +55,6 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Topic :: Scientific/Engineering",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
-        "Topic :: Scientific/Engineering :: MONAI/AI",
         "Topic :: Scientific/Engineering :: Medical Science Apps.",
     ],
     extras_require={"none": [], "dev": ["pytest~=7.1"]},
