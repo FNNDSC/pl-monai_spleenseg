@@ -29,7 +29,7 @@ warnings.filterwarnings(
 
 from chris_plugin import chris_plugin, PathMapper
 
-__version__ = "1.0.2"
+__version__ = "1.0.4"
 
 DISPLAY_TITLE = r"""
 
