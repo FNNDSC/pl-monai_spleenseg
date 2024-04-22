@@ -18,6 +18,7 @@ def plot_imageAndLabel(
     plt.title("label")
     plt.imshow(label[:, :, 80])
     plt.savefig(str(savefile))
+    plt.clf()
 
 
 def plot_trainingMetrics(
@@ -31,12 +32,13 @@ def plot_trainingMetrics(
     plt.xlabel("epoch")
     plt.plot(x, y)
     plt.subplot(1, 2, 2)
-    plt.title("Val Mean Dice")
+    plt.title("Validation Mean Dice")
     x = [training.val_interval * (i + 1) for i in range(len(log.metric_per_epoch))]
     y = log.metric_per_epoch
     plt.xlabel("epoch")
     plt.plot(x, y)
     plt.savefig(str(savefile))
+    plt.clf()
 
 
 def plot_bestModelOnValidate(
@@ -53,3 +55,18 @@ def plot_bestModelOnValidate(
     plt.title(f"output {title}")
     plt.imshow(torch.argmax(output, dim=1).detach().cpu()[0, :, :, 80])
     plt.savefig(str(savefile))
+    plt.clf()
+
+
+def plot_infer(
+    input: torch.Tensor, result: torch.Tensor, title: str, savefile: Path
+) -> None:
+    plt.figure("Infer", (18, 6))
+    plt.subplot(1, 2, 1)
+    plt.title(f"input: {title}")
+    plt.imshow(input[:, :, 20], cmap="gray")
+    plt.subplot(1, 2, 2)
+    plt.title(f"result: {title}")
+    plt.imshow(result[0].detach().cpu()[1, :, :, 20])
+    plt.savefig(str(savefile))
+    plt.clf()
