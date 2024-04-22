@@ -35,6 +35,7 @@ def readme():
 
 setup(
     name="spleenseg",
+    version=get_version("spleenseg/spleenseg"),
     description="A ChRIS DS plugin heavily hacked off project MONAI's spleen segmenation notebook",
     long_description=readme(),
     author="FNNDSC",
