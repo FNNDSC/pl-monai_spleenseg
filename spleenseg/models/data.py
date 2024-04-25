@@ -53,7 +53,7 @@ class TrainingParams:
             self.postTrainingValidation: Path = Path(
                 Path(options.outputdir) / "training" / "post" / "validation"
             )
-            self.novelInference: Path = Path(Path(options.outputdir) / "validation")
+            self.novelInference: Path = Path(Path(options.outputdir) / "inference")
 
 
 @dataclass
