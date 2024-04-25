@@ -518,7 +518,9 @@ class NeuralNet:
             y_pred=predictions,  # type: ignore
             y=labels,  # type: ignore
         )
-        print(f"Best prediction dice metric: {Dm}")
+        print(
+            f"validation spacing {sample['index']}, best prediction dice metric: {Dm}"
+        )
         if space.loader.batch_size:
             if sample["index"] == len(space.cache) // space.loader.batch_size:
                 metric = self.network.dice_metric.aggregate().item()
@@ -568,7 +570,7 @@ class NeuralNet:
         result: torch.Tensor,
         telemetry: data.NIfTItelemetry | None = None,
     ) -> float:
-        index: int = int(sample["int"])
+        index: int = int(sample["index"])
         sample["pred"] = result
         sample = [self.f_outputPost(i) for i in decollate_batch(sample)]
         prediction = from_engine(["pred"])(sample)
@@ -600,7 +602,11 @@ class NeuralNet:
         testingTransforms: Compose
         testingTransforms = transforms.inferenceUse_transforms()
         self.testingSpace = self.loaderCache_create(
-            self.testingFileSet, testingTransforms, 1
+            self.testingFileSet,
+            testingTransforms,
+            1,
+            " testing set exmeplar:  ",
+            self.trainingParams.novelInference / "orig.nii.gz",
         )
         self.f_outputPost = transforms.transforms_build(
             [
