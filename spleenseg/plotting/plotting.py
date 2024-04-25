@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from pathlib import Path
+from monai.data.meta_tensor import MetaTensor
 import torch
 import matplotlib.pyplot as plt
 import pudb
@@ -42,7 +43,10 @@ def plot_trainingMetrics(
 
 
 def plot_bestModelOnValidate(
-    input: dict[str, torch.Tensor], output: torch.Tensor, title: str, savefile: Path
+    input: dict[str, torch.Tensor | MetaTensor | int],
+    output: torch.Tensor,
+    title: str,
+    savefile: Path,
 ) -> None:
     plt.figure("check", (18, 6))
     plt.subplot(1, 3, 1)
