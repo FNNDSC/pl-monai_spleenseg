@@ -38,6 +38,21 @@ class TrainingParams:
             self.modelONNX = Path(options.outputdir) / "model.onnx"
             self.determinismSeed = self.options.determinismSeed
             set_determinism(seed=self.determinismSeed)
+            self.preTrainingIO: Path = Path(
+                Path(options.outputdir) / "training" / "pre" / "epoch"
+            )
+            self.whileTrainingIO: Path = Path(
+                Path(options.outputdir) / "training" / "during" / "epoch"
+            )
+            self.whileTrainingValidation: Path = Path(
+                Path(options.outputdir) / "training" / "during" / "validation"
+            )
+            self.postTrainingImageSpacings: Path = Path(
+                Path(options.outputdir) / "training" / "post" / "spacing"
+            )
+            self.postTrainingValidation: Path = Path(
+                Path(options.outputdir) / "validation"
+            )
 
 
 @dataclass
