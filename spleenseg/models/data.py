@@ -51,8 +51,15 @@ class TrainingParams:
                 Path(options.outputdir) / "training" / "post" / "spacing"
             )
             self.postTrainingValidation: Path = Path(
-                Path(options.outputdir) / "validation"
+                Path(options.outputdir) / "training" / "post" / "validation"
             )
+            self.novelInference: Path = Path(Path(options.outputdir) / "validation")
+
+
+@dataclass
+class NIfTItelemetry:
+    info: list[str] = field(default_factory=list)
+    savePath: list[Path] = field(default_factory=list)
 
 
 @dataclass
