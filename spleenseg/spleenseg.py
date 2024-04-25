@@ -58,10 +58,10 @@ parser.add_argument(
     help="mode of behaviour: training or inference",
 )
 parser.add_argument(
-    "--logTrainingTransformVols",
+    "--logTransformVols",
     default=False,
     action="store_true",
-    help="If specified, save training tranformations as NIfTI volumes",
+    help="If specified, save intermediary and inference data as NIfTI volumes",
 )
 parser.add_argument(
     "--useModel",
@@ -177,13 +177,15 @@ def envDetail_print(options: Namespace, **kwargs):
 
 
 def env_outputDirsMake(options: Namespace) -> None:
+    params: TrainingParams = TrainingParams(options)
     if "training" in options.mode:
-        params: TrainingParams = TrainingParams(options)
+        params.preTrainingIO.mkdir(parents=True, exist_ok=True)
         params.whileTrainingIO.mkdir(parents=True, exist_ok=True)
         params.whileTrainingValidation.mkdir(parents=True, exist_ok=True)
         params.postTrainingValidation.mkdir(parents=True, exist_ok=True)
+        params.postTrainingImageSpacings.mkdir(parents=True, exist_ok=True)
     if "inference" in options.mode:
-        Path(Path(options.outputdir) / "inference").mkdir(parents=True, exist_ok=True)
+        params.novelInference.mkdir(parents=True, exist_ok=True)
 
 
 def modelFile_inputdirGet(options: Namespace) -> Path:
