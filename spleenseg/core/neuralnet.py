@@ -28,12 +28,12 @@ import pudb
 import shutil
 
 
-def dictFirstKeyValue_getFromList(l: list[dict[str, Any]], i: int = 0) -> Any:
+def dictFirstKeyValue_getFromList(lst: list[dict[str, Any]], i: int = 0) -> Any:
     val: Any = None
-    if len(l):
-        if l[i]:
-            key: str = list(l[i].keys())[0]
-            val = l[i][key]
+    if len(lst):
+        if lst[i]:
+            key: str = list(lst[i].keys())[0]
+            val = lst[i][key]
     return val
 
 
@@ -79,6 +79,9 @@ class NeuralNet:
         self.trainingEpoch: int = 0
         self.whileTrainingNIfTIsaved: bool = False
         self.whileTrainingValidationNIfTIsaved: bool = False
+        self.postTrainingBestModelNIfTIsaved: bool = False
+        self.postTrainingSpacingsNIfTIsaved: bool = False
+        self.novelInferenceNIfTIsaved: bool = False
 
         self.f_outputPost: Compose
         self.f_labelPost: Compose
@@ -115,9 +118,9 @@ class NeuralNet:
 
         NB: Parameterize all params!!
         """
-
         NIfTIfile: str = dictFirstKeyValue_getFromList(fileList)
-        if not saveExemplar.parts:
+        if saveExemplar.parts:
+            print(f"         set exemplar:   save:  {saveExemplar}")
             shutil.copy(str(NIfTIfile), str(saveExemplar))
         if NIfTIfile is not None:
             nifti: nib.nifti1 | nib.nifti2 = nib.load(NIfTIfile)
@@ -224,37 +227,18 @@ class NeuralNet:
         nib.save(niftiVolume, savefile)
         pass
 
-    def sample_showInfoTest(
-        self,
-        # sample: int,
-        tensor: list[MetaTensor | torch.Tensor],
-        prefix: list[str],
-        saveto: list[Path],
-        saveVolumes: bool = True,
-    ):
-        # if sample != 1:
-        #     return
-        pudb.set_trace()
-        for T, txt, savefile in zip(tensor, prefix, saveto):
-            print(f"{txt} shape: {T.shape}")
-            if self.trainingParams.options.logTrainingTransformVols and saveVolumes:
-                print(f"{txt} save:  {savefile}")
-                self.metaTensor_toNIfTI(T, savefile)
-
     def sample_showInfo(
         self,
-        sample: int,
         tensor: list[MetaTensor | torch.Tensor],
-        prefix: list[str],
-        saveto: list[Path],
+        niftiTelemetry: data.NIfTItelemetry,
         saveVolumes: bool = True,
     ):
-        if sample != 1:
-            return
-        pudb.set_trace()
-        for T, txt, savefile in zip(tensor, prefix, saveto):
+        # pudb.set_trace()
+        for T, txt, savefile in zip(
+            tensor, niftiTelemetry.info, niftiTelemetry.savePath
+        ):
             print(f"{txt} shape: {T.shape}")
-            if self.trainingParams.options.logTrainingTransformVols and saveVolumes:
+            if self.trainingParams.options.logTransformVols and saveVolumes:
                 print(f"{txt} save:  {savefile}")
                 self.metaTensor_toNIfTI(T, savefile)
 
@@ -275,33 +259,51 @@ class NeuralNet:
         sample: int = 0
         sample_loss: float = 0.0
         total_loss: float = 0.0
+        niftiTelemetry: data.NIfTItelemetry = data.NIfTItelemetry()
         for trainingInstance in trainingSpace.loader:
             sample += 1
             self.input, self.target = (
                 trainingInstance["image"].to(self.network.device),
                 trainingInstance["label"].to(self.network.device),
             )
-            self.sample_showInfo(
-                sample,
-                [self.input, self.target],
-                ["training image", "training label"],
-                [
+            if sample == 1:
+                niftiTelemetry.info = ["in training image", "in training label"]
+                niftiTelemetry.savePath = [
                     self.trainingParams.whileTrainingIO / "input.nii.gz",
                     self.trainingParams.whileTrainingIO / "label.nii.gz",
-                ],
-                not self.whileTrainingNIfTIsaved,
-            )
-            self.whileTrainingNIfTIsaved = True
+                ]
+                self.sample_showInfo(
+                    [self.input, self.target],
+                    niftiTelemetry,
+                    not self.whileTrainingNIfTIsaved,
+                )
+                self.whileTrainingNIfTIsaved = True
             sample_loss = self.evalAndCorrect()
             total_loss += sample_loss
             self.sample_showSummary(sample, sample_loss, trainingSpace)
         total_loss /= sample
         return total_loss
 
+    def train_evaluateCurrentEpochWithTelemetry(self):
+        print("evaluating current model at this epoch")
+        niftiTelemetry: data.NIfTItelemetry = data.NIfTItelemetry()
+        niftiTelemetry.info = [
+            "in training validation inference input",
+            "in training validation inference output",
+        ]
+        niftiTelemetry.savePath = [
+            self.trainingParams.whileTrainingValidation / "input.nii.gz",
+            self.trainingParams.whileTrainingValidation / "output.nii.gz",
+        ]
+        self.slidingWindowInference_do(
+            self.validationSpace, self.validate, niftiTelemetry
+        )
+
     def train(self, useModelFile: Path | None = None):
         self.f_outputPost = transforms.transforms_build(
             [transforms.f_AsDiscreteArgMax()]
         )
+        # niftiTelemetry: data.NIfTItelemetry = data.NIfTItelemetry()
         self.f_labelPost = transforms.transforms_build([transforms.f_AsDiscrete()])
         self.trainingEpoch = 0
         epoch_loss: float = 0.0
@@ -317,8 +319,19 @@ class NeuralNet:
             print(f"epoch {self.trainingEpoch+1:03}, average loss: {epoch_loss:.4f}")
             self.trainingLog.loss_per_epoch.append(epoch_loss)
             if (self.trainingEpoch + 1) % self.trainingParams.val_interval == 0:
-                print("evaluating current model")
-                self.slidingWindowInference_do(self.validationSpace, self.validate)
+                self.train_evaluateCurrentEpochWithTelemetry()
+                # print("evaluating current model")
+                # niftiTelemetry.info = [
+                #     "in training validation inference input",
+                #     "in training validation inference output",
+                # ]
+                # niftiTelemetry.savePath = [
+                #     self.trainingParams.whileTrainingValidation / "input.nii.gz",
+                #     self.trainingParams.whileTrainingValidation / "output.nii.gz",
+                # ]
+                # self.slidingWindowInference_do(
+                #     self.validationSpace, self.validate, niftiTelemetry
+                # )
         print("-" * 10)
         print(
             "Training complete: "
@@ -359,14 +372,13 @@ class NeuralNet:
 
     def validate(
         self,
-        sample: dict[str, MetaTensor | torch.Tensor],
+        sample: dict[str, MetaTensor | torch.Tensor | int],
         space: data.LoaderCache,
-        # index: int,
         result: torch.Tensor,
-        telemetry: dict[str, list] | None = None,
+        telemetry: data.NIfTItelemetry | None = None,
     ) -> float:
         """
-        This is callback method called in the inference stage.
+        Callback method called in the inference stage.
 
 
         Given a 'sample' from a LoaderCache iteration, a data space containing
@@ -377,55 +389,28 @@ class NeuralNet:
             self.f_outputPost(i)
             for i in decollate_batch(result)  # type: ignore[arg-type]
         ]
-        Tdm: torch.Tensor = self.diceMetric_do(
-            outputPostProc, sample["label"].to(self.network.device)
-        )
-        if space.loader.batch_size:
-            print(
-                f"  validation run {sample['index']:02}/"
-                f"{len(space.cache) // space.loader.batch_size:02}, "
-                f"dice metric: {Tdm}"
+        if isinstance(sample["label"], torch.Tensor):
+            Tdm: torch.Tensor = self.diceMetric_do(
+                outputPostProc, sample["label"].to(self.network.device)
             )
-            if sample["index"] == len(space.cache) // space.loader.batch_size:
-                if telemetry is not None:
-                    self.sample_showInfoTest(
-                        [sample["input"], sample["output"]],
-                        telemetry["prefix"],
-                        telemetry["destination"],
-                    )
-                metric = self.inference_metricsProcess()
-        return metric
-
-    def validateOrig(
-        self,
-        sample: dict[str, MetaTensor | torch.Tensor],
-        space: data.LoaderCache,
-        index: int,
-        result: torch.Tensor,
-    ) -> float:
-        """
-        This is callback method called in the inference stage.
-
-
-        Given a 'sample' from a LoaderCache iteration, a data space containing
-        the sample, the sample 'index', and the result, perform some validation.
-        """
-        metric: float = -1.0
-        outputPostProc: list[MetaTensor] = [
-            self.f_outputPost(i)
-            for i in decollate_batch(result)  # type: ignore[arg-type]
-        ]
-        Tdm: torch.Tensor = self.diceMetric_do(
-            outputPostProc, sample["label"].to(self.network.device)
-        )
-        if space.loader.batch_size:
-            print(
-                f"  validation run {index:02}/"
-                f"{len(space.cache) // space.loader.batch_size:02}, "
-                f"dice metric: {Tdm}"
-            )
-            if index == len(space.cache) // space.loader.batch_size:
-                metric = self.inference_metricsProcess()
+            if space.loader.batch_size:
+                print(
+                    f"  validation run {sample['index']:02}/"
+                    f"{len(space.cache) // space.loader.batch_size:02}, "
+                    f"dice metric: {Tdm}"
+                )
+                if sample["index"] == len(space.cache) // space.loader.batch_size:
+                    if telemetry is not None:
+                        if isinstance(
+                            sample["input"], (MetaTensor | torch.Tensor)
+                        ) and isinstance(sample["output"], (MetaTensor, torch.Tensor)):
+                            self.sample_showInfo(
+                                [sample["input"], sample["output"]],
+                                telemetry,
+                                not self.whileTrainingValidationNIfTIsaved,
+                            )
+                            self.whileTrainingValidationNIfTIsaved = True
+                    metric = self.inference_metricsProcess()
         return metric
 
     def slidingWindowInference_do(
@@ -434,17 +419,16 @@ class NeuralNet:
         f_callback: (
             Callable[
                 [
-                    dict[str, MetaTensor | torch.Tensor],
+                    dict[str, MetaTensor | torch.Tensor | int],
                     data.LoaderCache,
-                    # int,
                     torch.Tensor,
-                    dict[str, list] | None,
+                    data.NIfTItelemetry | None,
                 ],
                 float,
             ]
             | None
         ) = None,
-        telemetry: dict[str, list[str | Path]] | None = None,
+        telemetry: data.NIfTItelemetry | None = None,
     ) -> float:
         metric: float = 0.0
         self.network.model.eval()
@@ -463,29 +447,32 @@ class NeuralNet:
                 sample["index"] = index
                 sample["input"] = input.cpu()
                 sample["output"] = outputRaw.cpu()
-                # self.sample_showInfo(
-                #     index,
-                #     [input, outputRaw],
-                #     ["validation inference input", "validation inference output"],
-                #     [
-                #         self.trainingParams.whileTrainingValidation / "input.nii.gz",
-                #         self.trainingParams.whileTrainingValidation / "output.nii.gz",
-                #     ],
-                #     not self.whileTrainingValidationNIfTIsaved,
-                # )
-                # self.whileTrainingValidationNIfTIsaved = True
                 if f_callback is not None:
                     metric = f_callback(sample, inferSpace, outputRaw, telemetry)
         return metric
 
     def plot_bestModel(
         self,
-        sample: dict[str, MetaTensor | torch.Tensor],
+        sample: dict[str, MetaTensor | torch.Tensor | int],
         space: data.LoaderCache,
-        index: int,
         result: torch.Tensor,
+        telemetry: data.NIfTItelemetry | None = None,
     ) -> float:
+        index: int = int(sample["index"])
         print(f"Plotting output of best model applied to validation sample {index}")
+        if telemetry is not None:
+            input = sample["input"]
+            output = sample["output"]
+            if isinstance(input, (MetaTensor, torch.Tensor)) and isinstance(
+                output, (MetaTensor, torch.Tensor)
+            ):
+                self.sample_showInfo(
+                    [input, output],
+                    telemetry,
+                    not self.postTrainingBestModelNIfTIsaved,
+                )
+            self.postTrainingBestModelNIfTIsaved = True
+
         plotting.plot_bestModelOnValidate(
             sample,
             result,
@@ -498,33 +485,53 @@ class NeuralNet:
         self.network.model.load_state_dict(
             torch.load(str(self.trainingParams.modelPth))
         )
-        self.slidingWindowInference_do(self.validationSpace, self.plot_bestModel)
+        niftiTelemetry: data.NIfTItelemetry = data.NIfTItelemetry()
+        niftiTelemetry.info = [
+            "post train best model image",
+            "post train best model output",
+        ]
+        niftiTelemetry.savePath = [
+            self.trainingParams.postTrainingValidation / "input.nii.gz",
+            self.trainingParams.postTrainingValidation / "output.nii.gz",
+        ]
+        self.slidingWindowInference_do(
+            self.validationSpace, self.plot_bestModel, niftiTelemetry
+        )
 
     def diceMetric_onValidationSpacing(
         self,
-        sample: dict[str, MetaTensor | torch.Tensor],
+        sample: dict[str, MetaTensor | torch.Tensor | int],
         space: data.LoaderCache,
-        index: int,
         result: torch.Tensor,
+        telemetry: data.NIfTItelemetry | None = None,
     ) -> float:
         metric: float = -1.0
         sample["pred"] = result
-        sample = [
+        lsample = [
             self.f_outputPost(i)
             for i in decollate_batch(sample)  # type: ignore[arg-type]
         ]
         predictions: torch.Tensor
         labels: torch.Tensor
-        predictions, labels = from_engine(["pred", "label"])(sample)
+        predictions, labels = from_engine(["pred", "label"])(lsample)
         Dm: torch.Tensor = self.network.dice_metric(
             y_pred=predictions,  # type: ignore
             y=labels,  # type: ignore
         )
         print(f"Best prediction dice metric: {Dm}")
         if space.loader.batch_size:
-            if index == len(space.cache) // space.loader.batch_size:
+            if sample["index"] == len(space.cache) // space.loader.batch_size:
                 metric = self.network.dice_metric.aggregate().item()
                 print(f"metric on original image spacing: {metric}")
+                if telemetry is not None:
+                    if isinstance(sample["image"], (MetaTensor | torch.Tensor)):
+                        pudb.set_trace()
+                        self.sample_showInfo(
+                            [sample["image"], sample["pred"]],
+                            telemetry,
+                            not self.postTrainingSpacingsNIfTIsaved,
+                        )
+                        self.postTrainingSpacingsNIfTIsaved = True
         return metric
 
     def bestModel_evaluateImageSpacings(self):
@@ -544,17 +551,24 @@ class NeuralNet:
                 transforms.f_labelAsDiscreted(),
             ]
         )
+        niftiTelemetry: data.NIfTItelemetry = data.NIfTItelemetry()
+        niftiTelemetry.info = ["image spacings input", "image spacings output"]
+        niftiTelemetry.savePath = [
+            self.trainingParams.postTrainingImageSpacings / "input.nii.gz",
+            self.trainingParams.postTrainingImageSpacings / "output.nii.gz",
+        ]
         self.slidingWindowInference_do(
-            self.validationSpace, self.diceMetric_onValidationSpacing
+            self.validationSpace, self.diceMetric_onValidationSpacing, niftiTelemetry
         )
 
     def inference_post(
         self,
-        sample: dict[str, MetaTensor | torch.Tensor],
+        sample: dict[str, MetaTensor | torch.Tensor | int],
         space: data.LoaderCache,
-        index: int,
         result: torch.Tensor,
+        telemetry: data.NIfTItelemetry | None = None,
     ) -> float:
+        index: int = int(sample["int"])
         sample["pred"] = result
         sample = [self.f_outputPost(i) for i in decollate_batch(sample)]
         prediction = from_engine(["pred"])(sample)
@@ -571,12 +585,18 @@ class NeuralNet:
                 / f"infer-{index}.png"
             ),
         )
+        if telemetry is not None:
+            self.sample_showInfo(
+                [Ti, result], telemetry, not self.novelInferenceNIfTIsaved
+            )
+            self.novelInferenceNIfTIsaved = True
 
         return 0.0
 
     def infer_usingModel(self, model: Path):
         # Check if model exists...
         self.network.model.load_state_dict(torch.load(str(model)))
+        niftiTelemetry: data.NIfTItelemetry = data.NIfTItelemetry()
         testingTransforms: Compose
         testingTransforms = transforms.inferenceUse_transforms()
         self.testingSpace = self.loaderCache_create(
@@ -591,5 +611,11 @@ class NeuralNet:
                 ),
             ]
         )
-
-        self.slidingWindowInference_do(self.testingSpace, self.inference_post)
+        niftiTelemetry.info = ["novel inference input", "novel inference output"]
+        niftiTelemetry.savePath = [
+            self.trainingParams.novelInference / "input.nii.gz",
+            self.trainingParams.novelInference / "output.nii.gz",
+        ]
+        self.slidingWindowInference_do(
+            self.testingSpace, self.inference_post, niftiTelemetry
+        )
