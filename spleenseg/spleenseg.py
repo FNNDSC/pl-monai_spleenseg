@@ -30,7 +30,7 @@ warnings.filterwarnings(
 
 from chris_plugin import chris_plugin, PathMapper
 
-__version__ = "1.0.12"
+__version__ = "1.2.0"
 
 DISPLAY_TITLE = r"""
 
@@ -250,7 +250,7 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
     :param outputdir: directory where to write output files
     """
 
-    pudb.set_trace()
+    # pudb.set_trace()
 
     envDetail_print(options)
     env_outputDirsMake(options)
