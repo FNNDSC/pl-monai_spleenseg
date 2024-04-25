@@ -236,7 +236,7 @@ def transforms_check(
     image, label = (check_data["image"][0][0], check_data["label"][0][0])
     print("")
     print("Checking transforms... :")
-    print(f"sample image shape: {image.shape}")
-    print(f"sample label shape: {label.shape}")
+    print(f"sample 'image' transform shape: {image.shape}")
+    print(f"sample 'label' transform shape: {label.shape}")
     plotting.plot_imageAndLabel(image, label, outputdir / "exemplar_image_label.jpg")
     return True
