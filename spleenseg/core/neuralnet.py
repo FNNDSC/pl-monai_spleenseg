@@ -221,11 +221,14 @@ class NeuralNet:
         return f_loss.item()
 
     def metaTensor_toNIfTI(self, metaTensor: MetaTensor, savefile: Path):
-        singleVolume: np.ndarray = metaTensor[0, 0].cpu().numpy()
+        singleVolume: np.ndarray
+        if metaTensor.dim() == 5:
+            singleVolume = metaTensor[0, 0].cpu().numpy()
+        if metaTensor.dim() == 3:
+            singleVolume = metaTensor.cpu().numpy()
         affine: np.ndarray = np.eye(4)
         niftiVolume: Nifti1Image = Nifti1Image(singleVolume, affine)
         nib.save(niftiVolume, savefile)
-        pass
 
     def sample_showInfo(
         self,
@@ -571,15 +574,17 @@ class NeuralNet:
         telemetry: data.NIfTItelemetry | None = None,
     ) -> float:
         index: int = int(sample["index"])
+        print(f"[{index}]--------> novel inference")
         sample["pred"] = result
         sample = [self.f_outputPost(i) for i in decollate_batch(sample)]
         prediction = from_engine(["pred"])(sample)
         fi = transforms.f_LoadImage()
         input = fi(prediction[0].meta["filename_or_obj"])
-        Ti = torch.as_tensor(input)
+        Ti: torch.Tensor = torch.as_tensor(input)
+        Pi: torch.Tensor = prediction[0]
         plotting.plot_infer(
             Ti,
-            prediction,
+            Pi,
             f"{index}",
             Path(
                 Path(self.network.options.outputdir)
@@ -617,7 +622,7 @@ class NeuralNet:
                 ),
             ]
         )
-        niftiTelemetry.info = ["novel inference input", "novel inference output"]
+        niftiTelemetry.info = ["novel inference input ", "novel inference output"]
         niftiTelemetry.savePath = [
             self.trainingParams.novelInference / "input.nii.gz",
             self.trainingParams.novelInference / "output.nii.gz",
