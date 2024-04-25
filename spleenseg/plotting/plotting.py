@@ -71,6 +71,6 @@ def plot_infer(
     plt.imshow(input[:, :, 20], cmap="gray")
     plt.subplot(1, 2, 2)
     plt.title(f"result: {title}")
-    plt.imshow(result[0].detach().cpu()[1, :, :, 20])
+    plt.imshow(result.detach().cpu()[1, :, :, 20])
     plt.savefig(str(savefile))
     plt.clf()
