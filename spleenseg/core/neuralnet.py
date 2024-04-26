@@ -530,7 +530,7 @@ class NeuralNet:
                 print(f"metric on original image spacing: {metric}")
                 if telemetry is not None:
                     if isinstance(sample["image"], (MetaTensor | torch.Tensor)):
-                        pudb.set_trace()
+                        # pudb.set_trace()
                         self.sample_showInfo(
                             [sample["image"], sample["pred"]],
                             telemetry,
