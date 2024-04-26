@@ -98,7 +98,7 @@ Mount the source code `spleenseg_train.py` into a container to try out changes w
 
 ```shell
 docker run --rm -it --userns=host -u $(id -u):$(id -g) \
-    -v $PWD/spleenseg_train.py:/usr/local/lib/python3.11/site-packages/spleenseg_train.py:ro \
+    -v $PWD/spleenseg_train.py:/usr/local/lib/python3.12/site-packages/spleenseg_train.py:ro \
     -v $PWD/in:/incoming:ro -v $PWD/out:/outgoing:rw -w /outgoing \
     localhost/fnndsc/pl-monai_spleenseg spleenseg_train /incoming /outgoing
 ```
