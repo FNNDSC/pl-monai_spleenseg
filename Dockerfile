@@ -7,7 +7,7 @@ LABEL org.opencontainers.image.authors="FNNDSC <dev@babyMRI.org>" \
       org.opencontainers.image.title="Spleen 3D image segmentation training (MONAI)" \
       org.opencontainers.image.description="A ChRIS based off project MONAI's spleen segmenation notebook (training only)"
 
-ARG SRCDIR=/usr/local/src/pl-monai_spleenseg_train
+ARG SRCDIR=/usr/local/src/pl-monai_spleenseg
 WORKDIR ${SRCDIR}
 
 COPY requirements.txt .
@@ -19,6 +19,6 @@ COPY . .
 ARG extras_require=none
 RUN pip install ".[${extras_require}]" \
     && cd / && rm -rf ${SRCDIR}
-WORKDIR /
+WORKDIR ${SRCDIR}
 
 CMD ["spleenseg_train"]
