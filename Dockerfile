@@ -11,7 +11,9 @@ ARG SRCDIR=/usr/local/src/pl-monai_spleenseg_train
 WORKDIR ${SRCDIR}
 
 COPY requirements.txt .
-RUN --mount=type=cache,sharing=private,target=/root/.cache/pip pip install -r requirements.txt
+# RUN --mount=type=cache,sharing=private,target=/root/.cache/pip pip install -r requirements.txt
+RUN pip install scikit-build
+RUN pip install -r requirements.txt
 
 COPY . .
 ARG extras_require=none
