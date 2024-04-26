@@ -8,9 +8,9 @@
 
 ## Abstract
 
-Based off Project MONAI's [spleen segmentation notebook](https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/spleen_segmentation_3d.ipynb), this plugin implements both the _training_ and _inference_ phases of the notebook, using data supplied in the _parent_ plugin (see Implementation). For the most part, the python notebook code can be used _verbatim_ in the plugin; however, in this example some deeper refactoring (adding typing, and some refactoring) to improve its use as a stand-alone application.
+Based off Project MONAI's [spleen segmentation notebook](https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/spleen_segmentation_3d.ipynb), this plugin implements both the _training_ and _inference_ phases of the notebook, using data supplied in the _parent_ plugin (see Implementation).
 
-In general, notebooks are not ideal for batch usage, and often cells repeat code used elsewhere in the notebook. This plugin code consolidated and generalized many of these cells into functions, reducing the overall code footprint considerably.
+For the most part, the python notebook code could have been mostly used _verbatim_ in the plugin; however, in this example considerable and deeper refactoring was performed. Other than of course now being a complete stand alone implementation, this plugin allows for _continuous_ (or _continued_) training, as well as saving examples of all training/validation/inference datasets as NIfTI volumes to allow for better understanding of the process.
 
 For the _training_ phase, the parent plugin provides input images (training and labeled) and the output is a model (`pth` and `ONNX` format). For the _inference_ phase, the input is a model file, and an image with the output being a segmented result.
 
@@ -23,7 +23,16 @@ The original notebook is a largely self-contained _monolithic_ application. Exem
 `pl-monai_spleenseg` is a _[ChRIS](https://chrisproject.org/) plugin_, meaning it can
 run from either within _ChRIS_ or the command-line.
 
-## Local Usage
+### On the metal
+
+Despite being a ChRIS plugin, _on the metal_ development/usage is supported. Simply check out the repository and do a `pip install` to either a local `venv` or an existing one:
+
+```bash
+pip install -U ./
+spleenseg --help
+```
+
+### Apptainer
 
 To get started with local command-line usage, use [Apptainer](https://apptainer.org/) (a.k.a. Singularity) to run `pl-monai_spleenseg` as a container:
 
@@ -38,11 +47,54 @@ To print its available options, run:
 apptainer exec docker://fnndsc/pl-monai_spleenseg spleenseg_train --help
 ```
 
+## Usage
+
+```html
+    ARGS
+        --mode <inference|training>
+        The mode of operation. If the "training" text has any additional characters,
+        then the epoch training is skipped and only the post-training logic is executed.
+
+        [--man]
+        If specified, print this help page and quit.
+
+        [--version]
+        If specified, print the version and quit.
+
+        [--logTransformVols]
+        If specified, log a set of intermediary NIfTI volumes as used for training,
+        validation, spacing, and inference.
+
+        [--useModel <modelFile>]
+        If specified, use <modelFile> for inference or continued training.
+
+        [--trainImageDir <train> --trainLabelsDir <label>]
+        In the <inputDir>, the name of the directory containing files for training
+        with their corresponding label targets.
+
+        [--testImageDir]
+        In the <inputDir> the name of the directory containing images for inference.
+
+        [--device <device>]
+        The device to use, typically "cpu" or "cuda:0".
+
+        [--determinismSeed <seed>]
+        Set the training seed.
+
+        [--maxEpochs <count>]
+        The max number of training epochs.
+
+        [--validateSize <size>]
+        In the training space, the number of images that should be used for validation
+        and not training.
+
+```
+
 ## Examples
 
 `spleenseg_train` requires two positional arguments: a directory containing input data, and a directory containing output data (graphs and "model" files). In this plugin, data is downloaded from [medicaldecathelon](http://medicaldecathelon.com). To get this data, first set an environment variable pointing at the directory to contain the pulled and unpacked data:
 
-```bash 
+```bash
 export MONAI_DATA_DIR=/some/dir
 ```
 
@@ -68,7 +120,7 @@ if not os.path.exists(data_dir):
 
 Or simply run the supplied `trainingDataPull.py` script (which is essentially the above code):
 
-```bash 
+```bash
 python trainingDataPull.py
 ```
 
@@ -76,7 +128,7 @@ Create some `output` directory, and using our `$MONAI_DATA_DIR`, we can run the 
 
 ```shell
 mkdir outgoing/
-apptainer exec docker://fnndsc/pl-monai_spleenseg:latest spleenseg_train \
+apptainer exec docker://fnndsc/pl-monai_spleenseg:latest spleenseg \
         [--args] $MONAI_DATA_DIR outgoing/
 ```
 
@@ -98,9 +150,9 @@ Mount the source code `spleenseg_train.py` into a container to try out changes w
 
 ```shell
 docker run --rm -it --userns=host -u $(id -u):$(id -g) \
-    -v $PWD/spleenseg_train.py:/usr/local/lib/python3.12/site-packages/spleenseg_train.py:ro \
+    -v $PWD/spleenseg/spleenseg.py:/usr/local/lib/python3.12/site-packages/spleenseg/spleenseg.py:ro \
     -v $PWD/in:/incoming:ro -v $PWD/out:/outgoing:rw -w /outgoing \
-    localhost/fnndsc/pl-monai_spleenseg spleenseg_train /incoming /outgoing
+    localhost/fnndsc/pl-monai_spleenseg spleenseg /incoming /outgoing
 ```
 
 ### Testing
