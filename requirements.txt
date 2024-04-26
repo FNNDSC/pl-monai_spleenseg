@@ -9,9 +9,10 @@ nibabel
 tqdm
 ignite
 
+scikit-build
 torch
 pytorch-ignite
-itk
+#itk
 scikit-image
 scipy
 pillow
@@ -19,7 +20,7 @@ tensorboard
 torchvision
 psutil
 pandas
-lmdb
+#lmdb
 einops
 transformers
 mlflow
