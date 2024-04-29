@@ -112,7 +112,8 @@ def parser_interpret(parser, *args, **kwargs):
         # and the CLI sys.argv  is that of the parent app
         # not spleenseg. Interpret the passwd parser and
         # return.
-        return parser.parse_args()
+        args = parser.parse_args()
+        return args
     if len(args):
         args = parser.parse_args(*args)
     else:
