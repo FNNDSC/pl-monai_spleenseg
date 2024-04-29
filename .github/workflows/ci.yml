@@ -67,7 +67,7 @@ jobs:
           if '${{ github.ref_type }}' == 'tag':
               local_tag = join_tag(('ghcr.io', '${{ github.repository }}', version))
           else:
-              local_tag = join_tag(('localhost', '${{ github.repository }}', 'latest'))
+              local_tag = join_tag(('localhost:5000', '${{ github.repository }}', 'latest'))
 
           product = itertools.product(registries, repos, tags)
           tags_csv = ','.join(map(join_tag, product))
@@ -79,6 +79,9 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
               for k, v in outputs.items():
                   out.write(f'{k}={v}\n')
+
+      - name: Run local registry
+        run: docker run --rm -d -p 5000:5000 registry:2
 
       - uses: actions/checkout@v4
         # QEMU is used for non-x86_64 builds
