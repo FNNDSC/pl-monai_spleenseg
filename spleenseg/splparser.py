@@ -98,11 +98,21 @@ def parser_setup(str_desc):
     return parser
 
 
-def parser_interpret(parser, *args):
+def parser_interpret(parser, *args, **kwargs):
     """
     Interpret the list space of *args, or sys.argv[1:] if
     *args is empty
     """
+    asModule: bool = False
+    for k, v in kwargs.items():
+        if k == "asModule":
+            asModule = v
+    if asModule:
+        # Here, spleenseg is used a module to another app
+        # and the CLI sys.argv  is that of the parent app
+        # not spleenseg. Interpret the passwd parser and
+        # return.
+        return parser.parse_args()
     if len(args):
         args = parser.parse_args(*args)
     else:
