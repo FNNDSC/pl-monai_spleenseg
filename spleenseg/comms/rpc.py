@@ -1,3 +1,4 @@
+from numpy import who
 from pyfiglet import FigletBuilder
 import requests
 from pathlib import Path
@@ -13,21 +14,52 @@ def file_toBytes(uploadFile: Path) -> bytes:
     return fileBytes
 
 
+def file_serializeToBytes(file: Path) -> dict[str, bytes]:
+    return {"file": file_toBytes(file)}
+
+
 class Rpc:
     def __init__(self, options: Namespace):
         self.options = options
 
-    def file_toBytes(self, uploadFile: Path) -> bytes:
-        with open(str(uploadFile), "rb") as f:
-            filebytes: bytes = f.read()
-        return filebytes
+    def do(self) -> None:
+        match self.options.do:
+            case "infer":
+                self.onFile_infer(Path(self.options.NIfTIfile))
+            case "sendmodel":
+                self.modelSend(self.options.pthModel, self.options.modelID)
+
+    def modelSend(self, modelFile: Path, modelID: str) -> requests.Response:
+        url: str = self.options.pfms + "spleenseg/modelpth/"
+        resp: requests.Response = self.localFiletoURL_post(
+            modelFile, url, {"modelID": modelID}
+        )
+        # files = file_serializeToBytes(modelFile)
+        # params = {"modelID": modelID}
+        # resp: requests.Response = requests.post(
+        #     url,
+        #     params=params,
+        #     files=files,
+        # )
+        return resp
+
+    def localFiletoURL_post(
+        self, uploadFile: Path = Path(""), url: str = "", params: dict = {}
+    ) -> requests.Response:
+        fileToSend: dict[str, bytes] = file_serializeToBytes(uploadFile)
+        response: requests.Response
+        if params:
+            response = requests.post(url, files=fileToSend, params=params)
+        else:
+            response = requests.post(url, files=fileToSend)
+        return response
 
     def onFile_infer(self, uploadFile: Path = Path("")):
         if not uploadFile.parts:
             uploadFile = self.options.NIfTIfile
-        fileToSend: dict[str, bytes] = {"file": file_toBytes(uploadFile)}
-
-        response: requests.Response = requests.post(self.options.url, files=fileToSend)
+        url: str = self.options.pfms + "spleenseg/NIfTIinference/"
+        params = {"modelID": self.options.modelID}
+        response: requests.Response = self.localFiletoURL_post(uploadFile, url, params)
 
         if response.status_code == 200:
             result = response.json()
@@ -55,10 +87,38 @@ def parser_setup(str_desc: str = "") -> ArgumentParser:
     )
 
     parser.add_argument(
+        "--pthModel",
+        type=str,
+        default="",
+        help="model file in pth format to upload for inference on remote server",
+    )
+
+    parser.add_argument(
+        "--modelID",
+        type=str,
+        default="",
+        help="model identifier to be associated with --pthModel",
+    )
+
+    parser.add_argument(
         "--url",
         type=str,
-        default="http://localhost:2024/api/v1/spleenseg/NIfTIinference/",
-        help="Endpoint to access on the hosted model server",
+        default="",
+        help="endpoint to access on the hosted model server",
+    )
+
+    parser.add_argument(
+        "--pfms",
+        type=str,
+        default="",
+        help="base URL for pfms",
+    )
+
+    parser.add_argument(
+        "--do",
+        type=str,
+        default="",
+        help="action to perform -- usually pushing a model file or running inference",
     )
 
     return parser
@@ -80,7 +140,7 @@ def parser_interpret(parser: ArgumentParser, *args) -> Namespace:
 def main(*args) -> None:
     options: Namespace = parser_interpret(parser_setup(), args)
     rpc = Rpc(options)
-    rpc.onFile_infer()
+    rpc.do()
 
 
 if __name__ == "__main__":
