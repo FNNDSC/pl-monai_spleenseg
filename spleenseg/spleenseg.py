@@ -41,7 +41,7 @@ DISPLAY_TITLE = r"""
 ╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝
 """
 
-__version__ = "1.2.20"
+__version__ = "1.2.22"
 import spleenseg.splparser as spl
 
 description: str = """
