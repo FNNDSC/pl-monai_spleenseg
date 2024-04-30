@@ -1,25 +1,30 @@
 #!/usr/bin/env python
 
-from collections.abc import Iterable
+# from collections.abc import Iterable
 from pathlib import Path
-from argparse import ArgumentParser, Namespace, ArgumentDefaultsHelpFormatter
-from dataclasses import dataclass
+from argparse import Namespace
 
-from matplotlib.pyplot import plot
+# from dataclasses import dataclass
+
+# from matplotlib.pyplot import plot
 from monai.config.deviceconfig import print_config
-from contextlib import redirect_stderr
-from io import StringIO
+
+# from contextlib import redirect_stderr
+# from io import StringIO
 
 # import os
 import sys
 import re
 import pudb
-from typing import Any, Optional, Callable
+
+# from typing import Any, Optional, Callable
 
 from spleenseg.core import neuralnet
 from spleenseg.models.data import TrainingParams
-from spleenseg.transforms import transforms
+
+# from spleenseg.transforms import transforms
 from spleenseg.plotting import plotting
+from spleenseg.comms import rpc
 import warnings
 from pyfiglet import Figlet
 
@@ -41,7 +46,7 @@ DISPLAY_TITLE = r"""
 ╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝
 """
 
-__version__ = "1.2.22"
+__version__ = "1.2.24"
 import spleenseg.splparser as spl
 
 description: str = """
@@ -166,6 +171,26 @@ def inference_do(neuralNet: neuralnet.NeuralNet, options: Namespace) -> bool:
     return inferenceOK
 
 
+def inference_pfmsDo(neuralNet: neuralnet.NeuralNet, options: Namespace) -> bool:
+    pudb.set_trace()
+    neuralNet.testingFileSet = testingData_prep(options)
+    remoteInfo: list[str] = options.mode.split("@")
+    modelID: str = remoteInfo[0]
+    url: str = remoteInfo[1]
+    rpcOptions: Namespace = rpc.parser_interpret(rpc.parser_setup(""), asModule=True)
+    rpcOptions.modelID = modelID
+    rpcOptions.pfms = url
+    rpcOptions.do = "infer"
+    rpcOptions.outputdir = options.outputdir
+    count: int
+    inputDict: dict[str, str]
+    for count, inputDict in enumerate(neuralNet.testingFileSet):
+        rpcOptions.outputfile = f"output-{count}.nii.gz"
+        rpcOptions.NIfTIfile = inputDict["image"]
+        remote = rpc.Rpc(rpcOptions)
+        remote.do()
+
+
 sparser = spl.parser_setup(description)
 
 
@@ -193,11 +218,15 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
     envDetail_print(options)
     env_outputDirsMake(options)
     neuralNet: neuralnet.NeuralNet = neuralnet.NeuralNet(options)
+
     if "training" in options.mode:
         training_do(neuralNet, options)
 
     if "inference" in options.mode:
         inference_do(neuralNet, options)
+
+    if "http" in options.mode:
+        inference_pfmsDo(neuralNet, options)
 
 
 if __name__ == "__main__":
