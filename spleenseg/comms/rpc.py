@@ -134,12 +134,22 @@ def parser_setup(str_desc: str = "") -> ArgumentParser:
     return parser
 
 
-def parser_interpret(parser: ArgumentParser, *args) -> Namespace:
+def parser_interpret(parser: ArgumentParser, *args, **kwargs) -> Namespace:
     """
     Interpret the list space of *args, or sys.argv[1:] if
     *args is empty
     """
     options: Namespace
+    asModule: bool = False
+    for k, v in kwargs.items():
+        if k == "asModule":
+            asModule = v
+    if asModule:
+        # Here, this code is used a module to another app
+        # and we don't want to "interpret" the host app's
+        # CLI.
+        options, unknown = parser.parse_known_args()
+        return options
     if len(args):
         options = parser.parse_args(*args[1:])
     else:
@@ -154,5 +164,5 @@ def main(*args) -> None:
 
 
 if __name__ == "__main__":
-    pudb.set_trace()
+    # pudb.set_trace()
     main(sys.argv)
