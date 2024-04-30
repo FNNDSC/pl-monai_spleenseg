@@ -25,7 +25,9 @@ class Rpc:
     def do(self) -> None:
         match self.options.do:
             case "infer":
-                self.onFile_infer(Path(self.options.NIfTIfile))
+                self.onFile_infer(
+                    Path(self.options.NIfTIfile), Path(self.options.outputdir)
+                )
             case "sendmodel":
                 self.modelSend(self.options.pthModel, self.options.modelID)
 
@@ -34,13 +36,6 @@ class Rpc:
         resp: requests.Response = self.localFiletoURL_post(
             modelFile, url, {"modelID": modelID}
         )
-        # files = file_serializeToBytes(modelFile)
-        # params = {"modelID": modelID}
-        # resp: requests.Response = requests.post(
-        #     url,
-        #     params=params,
-        #     files=files,
-        # )
         return resp
 
     def localFiletoURL_post(
@@ -54,7 +49,7 @@ class Rpc:
             response = requests.post(url, files=fileToSend)
         return response
 
-    def onFile_infer(self, uploadFile: Path = Path("")):
+    def onFile_infer(self, uploadFile: Path = Path(""), outputDir: Path = Path("")):
         if not uploadFile.parts:
             uploadFile = self.options.NIfTIfile
         url: str = self.options.pfms + "spleenseg/NIfTIinference/"
@@ -62,11 +57,13 @@ class Rpc:
         response: requests.Response = self.localFiletoURL_post(uploadFile, url, params)
 
         if response.status_code == 200:
-            result = response.json()
-            print(f"Input file name: {result['inputfilename']}")
-            print(f"Shape: {result['shape']}")
-            print(f"Data type: {result['dtype']}")
-            print(f"Data: {result['data'][:10]}...")  # Print the first 10 values
+            outputFile: Path = Path("output.nii.gz")
+            if len(self.options.outputfile):
+                outputFile = Path(self.options.outputfile)
+            outputPath: Path = outputDir / outputFile
+            with open(outputPath, "wb") as receivedFile:
+                receivedFile.write(response.content)
+                print(f"Inferred NIfTI saved to {outputPath}")
         else:
             print(f"Error: {response.status_code} - {response.text}")
 
@@ -121,6 +118,19 @@ def parser_setup(str_desc: str = "") -> ArgumentParser:
         help="action to perform -- usually pushing a model file or running inference",
     )
 
+    parser.add_argument(
+        "--outputdir",
+        type=str,
+        default=".",
+        help="directory in which to save the result of the inference call",
+    )
+
+    parser.add_argument(
+        "--outputfile",
+        type=str,
+        default="output.nii.gz",
+        help="name of resultant output NIfTI file from the inference call",
+    )
     return parser
 
 
