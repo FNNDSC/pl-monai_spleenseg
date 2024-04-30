@@ -44,6 +44,7 @@ setup(
     packages=[
         "spleenseg",
         "spleenseg/core",
+        "spleenseg/comms",
         "spleenseg/models",
         "spleenseg/plotting",
         "spleenseg/transforms",
