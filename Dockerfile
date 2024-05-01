@@ -21,4 +21,4 @@ ARG extras_require=none
 #     && cd / && rm -rf ${SRCDIR}
 WORKDIR ${SRCDIR}
 
-CMD ["spleenseg_train"]
+CMD ["spleenseg"]
