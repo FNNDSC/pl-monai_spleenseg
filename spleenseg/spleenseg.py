@@ -46,7 +46,7 @@ DISPLAY_TITLE = r"""
 ╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝
 """
 
-__version__ = "1.2.24"
+__version__ = "1.2.26"
 import spleenseg.splparser as spl
 
 description: str = """
@@ -172,7 +172,7 @@ def inference_do(neuralNet: neuralnet.NeuralNet, options: Namespace) -> bool:
 
 
 def inference_pfmsDo(neuralNet: neuralnet.NeuralNet, options: Namespace) -> bool:
-    pudb.set_trace()
+    # pudb.set_trace()
     neuralNet.testingFileSet = testingData_prep(options)
     remoteInfo: list[str] = options.mode.split("@")
     modelID: str = remoteInfo[0]
@@ -187,6 +187,7 @@ def inference_pfmsDo(neuralNet: neuralnet.NeuralNet, options: Namespace) -> bool
     for count, inputDict in enumerate(neuralNet.testingFileSet):
         rpcOptions.outputfile = f"output-{count}.nii.gz"
         rpcOptions.NIfTIfile = inputDict["image"]
+        print(f"{rpcOptions.NIfTIfile:46} ━━━🭬 [{rpcOptions.pfms}] ━━━🭬 ", end="")
         remote = rpc.Rpc(rpcOptions)
         remote.do()
 
