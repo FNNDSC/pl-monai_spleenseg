@@ -29,7 +29,7 @@ def parser_setup(str_desc):
         "--mode",
         type=str,
         default="training",
-        help="mode of behaviour: training or inference",
+        help="mode of behaviour: 'training', 'inference' or <remote>",
     )
     parser.add_argument(
         "--logTransformVols",
@@ -155,7 +155,7 @@ def manPage_print() -> None:
 
     SYNOPSIS
 
-        spleenseg --mode <inference|training>                               \\
+        spleenseg [--mode <inference|training>]                             \\
                   [--man]                                                   \\
                   [--version]                                               \\
                   [--logTransformVols]                                      \\
@@ -165,7 +165,8 @@ def manPage_print() -> None:
                   [--device <device>]                                       \\
                   [--determinismSeed <seed>]                                \\
                   [--maxEpochs <count>]                                     \\
-                  [--validateSize <size>]
+                  [--validateSize <size>]                                   \\
+                  <inputDir> <outputDir>
 
     DESCRIPTION
 
@@ -176,9 +177,17 @@ def manPage_print() -> None:
         and re-usability.
 
     ARGS
-        --mode <inference|training>
-        The mode of operation. If the "training" text has any additional characters,
-        then the epoch training is skipped and only the post-training logic is executed.
+        --mode <inference|training|[<model>@<remote>]>
+        The mode of operation. If the actual text "training" text has any additional characters,
+        then the epoch training is skipped and only the post-training logic is executed --
+        this allows the system to operate as if in training mode, but only perform the post
+        training steps. For example, "--mode trainingPost" would invoke this mode.
+
+        If the mode is specified as <model>@<remote> (e.g. splsegv1@http://pfms.org/api/v1/)
+        then the pfms server at (in this example) http://pfms.org with base route /api/v1/
+        is used to perform remote inference. Here, the model called "splsegv1" on the remote
+        pfms server will be used to run inference. The return from this call is a NIfTI
+        segmented volume saved in the <outputDir>.
 
         [--man]
         If specified, print this help page and quit.
