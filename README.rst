@@ -29,9 +29,9 @@ training/validation/inference datasets as NIfTI volumes to allow for
 better understanding of the process.
 
 For the *training* phase, the parent plugin provides input images
-(training and labeled) and the output is a model (``pth`` and ``ONNX``
-format). For the *inference* phase, the input is a model file, and an
-image with the output being a segmented result.
+(training and labeled) and the output is a model (``pth`` or ``ONNX``
+format). For the *inference* phase, the input is a model file, an image
+(or more) to analyze, and the output is a segmented volume file.
 
 Implementation
 --------------

@@ -12,7 +12,7 @@ Based off Project MONAI's [spleen segmentation notebook](https://github.com/Proj
 
 For the most part, the python notebook code could have been mostly used _verbatim_ in the plugin; however, in this example considerable and deeper refactoring was performed. Other than of course now being a complete stand alone implementation, this plugin allows for _continuous_ (or _continued_) training, as well as saving examples of all training/validation/inference datasets as NIfTI volumes to allow for better understanding of the process.
 
-For the _training_ phase, the parent plugin provides input images (training and labeled) and the output is a model (`pth` and `ONNX` format). For the _inference_ phase, the input is a model file, and an image with the output being a segmented result.
+For the _training_ phase, the parent plugin provides input images (training and labeled) and the output is a model (`pth` or `ONNX` format). For the _inference_ phase, the input is a model file, an image (or more) to analyze, and the output is a segmented volume file.
 
 ## Implementation
 
