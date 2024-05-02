@@ -4,7 +4,7 @@
 [![MIT License](https://img.shields.io/github/license/fnndsc/pl-monai_spleenseg)](https://github.com/FNNDSC/pl-monai_spleenseg/blob/main/LICENSE)
 [![ci](https://github.com/FNNDSC/pl-monai_spleenseg/actions/workflows/ci.yml/badge.svg)](https://github.com/FNNDSC/pl-monai_spleenseg/actions/workflows/ci.yml)
 
-`pl-monai_spleenseg` is a [_ChRIS_](https://chrisproject.org/) _DS_ plugin based off Project MONAI's spleen segmentation exemplar. This plugin implements the training and inference phases as two distinct modes of operation. For training, input files are a set of training examples (images and segmented images) and output files are training plots and weight (model) files in `pth` and `ONNX` format. For inference, input files are a model file and an image to segment.
+`pl-monai_spleenseg` is a [_ChRIS_](https://chrisproject.org/) _DS_ plugin based off Project MONAI's spleen segmentation exemplar. This plugin implements the training and inference phases as two distinct modes of operation. For training, input files are a set of training examples (images and segmented images) and output files are training plots and weight (model) files in `pth` or `ONNX` format. For inference, input files are a model file and an input image (or set of images) and the output is a segmented image (or set of images).
 
 ## Abstract
 
@@ -13,6 +13,8 @@ Based off Project MONAI's [spleen segmentation notebook](https://github.com/Proj
 For the most part, the python notebook code could have been mostly used _verbatim_ in the plugin; however, in this example considerable and deeper refactoring was performed. Other than of course now being a complete stand alone implementation, this plugin allows for _continuous_ (or _continued_) training, as well as saving examples of all training/validation/inference datasets as NIfTI volumes to allow for better understanding of the process.
 
 For the _training_ phase, the parent plugin provides input images (training and labeled) and the output is a model (`pth` or `ONNX` format). For the _inference_ phase, the input is a model file, an image (or more) to analyze, and the output is a segmented volume file.
+
+An additional remote inference phase is available. If the mode is specified as `<modelID>@<URI>` where `modelID` is the name of a model and `URI` denotes a `pfms` server's base URL, the plugin will transmit input images to the remote endpoint where the `pfms` service will run the inference and return a segmented volume file.
 
 ## Implementation
 
