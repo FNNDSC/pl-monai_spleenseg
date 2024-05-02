@@ -17,8 +17,8 @@ RUN pip install -r requirements.txt
 
 COPY . .
 ARG extras_require=none
-# RUN pip install ".[${extras_require}]" \
-#     && cd / && rm -rf ${SRCDIR}
+RUN pip install ".[${extras_require}]" \
+    && cd / && rm -rf ${SRCDIR}
 WORKDIR ${SRCDIR}
 
 CMD ["spleenseg"]
