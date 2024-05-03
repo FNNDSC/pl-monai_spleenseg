@@ -46,7 +46,7 @@ DISPLAY_TITLE = r"""
 ╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝
 """
 
-__version__ = "1.2.32"
+__version__ = "1.2.34"
 import spleenseg.splparser as spl
 
 description: str = """
@@ -202,6 +202,7 @@ sparser = spl.parser_setup(description)
     min_memory_limit="16Gi",  # supported units: Mi, Gi
     min_cpu_limit="1000m",  # millicores, e.g. "1000m" = 1 CPU core
     min_gpu_limit=1,  # set min_gpu_limit=1 to enable GPU
+    max_gpu_limit=2,
 )
 def main(options: Namespace, inputdir: Path, outputdir: Path):
     """
