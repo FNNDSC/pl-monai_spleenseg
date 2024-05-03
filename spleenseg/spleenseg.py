@@ -46,7 +46,7 @@ DISPLAY_TITLE = r"""
 ╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝
 """
 
-__version__ = "1.2.30"
+__version__ = "1.2.32"
 import spleenseg.splparser as spl
 
 description: str = """
@@ -201,7 +201,7 @@ sparser = spl.parser_setup(description)
     category="",  # ref. https://chrisstore.co/plugins
     min_memory_limit="16Gi",  # supported units: Mi, Gi
     min_cpu_limit="1000m",  # millicores, e.g. "1000m" = 1 CPU core
-    min_gpu_limit=0,  # set min_gpu_limit=1 to enable GPU
+    min_gpu_limit=1,  # set min_gpu_limit=1 to enable GPU
 )
 def main(options: Namespace, inputdir: Path, outputdir: Path):
     """
