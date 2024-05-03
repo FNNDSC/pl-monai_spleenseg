@@ -46,7 +46,7 @@ DISPLAY_TITLE = r"""
 ╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝
 """
 
-__version__ = "1.2.36"
+__version__ = "1.2.38"
 import spleenseg.splparser as spl
 
 description: str = """
@@ -129,7 +129,14 @@ def env_outputDirsMake(options: Namespace) -> None:
 
 
 def modelFile_inputdirGet(options: Namespace) -> Path:
-    modelFile: Path = Path(Path(options.inputdir) / options.useModel)
+    modelTarget: Path = options.useModel
+    inputDir: Path = Path(options.inputdir)
+    modelFile: Path = Path("")
+    path: Path
+    for path in inputDir.rglob(str(modelTarget)):
+        if path.is_file():
+            modelFile = path
+            break
     if not modelFile.exists():
         raise FileNotFoundError(f"The model '{modelFile}' does not exist.")
     return modelFile
