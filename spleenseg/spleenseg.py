@@ -46,7 +46,7 @@ DISPLAY_TITLE = r"""
 ╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝
 """
 
-__version__ = "1.2.38"
+__version__ = "1.2.40"
 import spleenseg.splparser as spl
 
 description: str = """
@@ -206,8 +206,8 @@ sparser = spl.parser_setup(description)
     parser=sparser,
     title="Spleen 3D image segmentation (MONAI)",
     category="",  # ref. https://chrisstore.co/plugins
-    min_memory_limit="48Gi",  # supported units: Mi, Gi
-    min_cpu_limit="1000m",  # millicores, e.g. "1000m" = 1 CPU core
+    min_memory_limit="24Gi",  # supported units: Mi, Gi
+    min_cpu_limit="8000m",  # millicores, e.g. "1000m" = 1 CPU core
     min_gpu_limit=1,  # set min_gpu_limit=1 to enable GPU
     max_gpu_limit=2,
 )
