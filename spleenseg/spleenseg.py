@@ -46,7 +46,7 @@ DISPLAY_TITLE = r"""
 ╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝
 """
 
-__version__ = "1.2.46"
+__version__ = "1.2.48"
 import spleenseg.splparser as spl
 
 description: str = """
@@ -98,7 +98,7 @@ def inputFilesSets_trainValidateFind(
     """
     trainingSpace: list[dict[str, str]] = trainingData_prep(options)
     trainingSet: list[dict[str, str]] = trainingSpace[: -options.validateSize]
-    validateSet: list[dict[str, str]] = trainingSpace[-options.validateSize:]
+    validateSet: list[dict[str, str]] = trainingSpace[-options.validateSize :]
     return trainingSet, validateSet
 
 
@@ -222,8 +222,8 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
     :param outputdir: directory where to write output files
     """
 
-    os.environ['TEMP'] = f'{outputdir}/tmp'
-    os.makedirs(os.environ['TEMP'], exist_ok=True)
+    os.environ["TEMP"] = f"{outputdir}/tmp"
+    os.makedirs(os.environ["TEMP"], exist_ok=True)
 
     # pudb.set_trace()
 
