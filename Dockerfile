@@ -30,8 +30,7 @@ RUN useradd -u 1001 -g localuser -m -s /bin/bash localuser
 RUN apt-get update && apt-get install -y sudo
 RUN echo '%localuser ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
-USER localuser
-
+#USER localuser
 
 WORKDIR ${SRCDIR}
 
