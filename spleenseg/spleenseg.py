@@ -12,7 +12,7 @@ from monai.config.deviceconfig import print_config
 # from contextlib import redirect_stderr
 # from io import StringIO
 
-# import os
+import os
 import sys
 import re
 import pudb
@@ -98,7 +98,7 @@ def inputFilesSets_trainValidateFind(
     """
     trainingSpace: list[dict[str, str]] = trainingData_prep(options)
     trainingSet: list[dict[str, str]] = trainingSpace[: -options.validateSize]
-    validateSet: list[dict[str, str]] = trainingSpace[-options.validateSize :]
+    validateSet: list[dict[str, str]] = trainingSpace[-options.validateSize:]
     return trainingSet, validateSet
 
 
@@ -221,6 +221,9 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
     :param inputdir: directory containing (read-only) input files
     :param outputdir: directory where to write output files
     """
+
+    os.environ['TEMP'] = f'{outputdir}/tmp'
+    os.makedirs(os.environ['TEMP'], exist_ok=True)
 
     # pudb.set_trace()
 
