@@ -21,10 +21,10 @@ RUN pip install ".[${extras_require}]" \
     && cd / && rm -rf ${SRCDIR}
 
 # Create the 'localuser' group with specified GID
-RUN groupadd -g 1101 localuser
+RUN groupadd -g 1001 localuser
 
 # Create the 'localuser' user with specified UID, add to the group, and create home directory
-RUN useradd -u 1101 -g localuser -m -s /bin/bash localuser
+RUN useradd -u 1001 -g localuser -m -s /bin/bash localuser
 
 # Grant sudo privileges to the 'localuser' user
 RUN apt-get update && apt-get install -y sudo
