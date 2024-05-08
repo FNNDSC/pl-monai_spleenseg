@@ -46,7 +46,7 @@ DISPLAY_TITLE = r"""
 ╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝
 """
 
-__version__ = "1.2.48"
+__version__ = "1.2.50"
 import spleenseg.splparser as spl
 
 description: str = """
@@ -112,8 +112,12 @@ def envDetail_print(options: Namespace, **kwargs):
     print(DISPLAY_TITLE)
     f = Figlet(font="doom")
     print(f.renderText(f"{options.mode}"))
-    print(f"Device = {options.device}")
-    print_config()
+    print(f"\nversion: {__version__}")
+    print(f"Device: {options.device}")
+    try:
+        print_config()
+    except Exception as e:
+        print("While printing some env info, some exception occurred. Ignoring...")
 
 
 def env_outputDirsMake(options: Namespace) -> None:
