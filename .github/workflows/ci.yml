@@ -124,7 +124,7 @@ jobs:
           username: ${{ secrets.CHRISPROJECT_USERNAME }}
           password: ${{ secrets.CHRISPROJECT_PASSWORD }}
           chris_url: https://cube.chrisproject.org/api/v1/
-          compute_names: NERC
+          compute_names: NERC-gpu-bigshm
           pull: missing
 
       - name: Update DockerHub description
