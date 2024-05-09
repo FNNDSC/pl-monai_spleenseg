@@ -46,7 +46,7 @@ DISPLAY_TITLE = r"""
 ╚══════╝╚═╝     ╚══════╝╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝╚══════╝ ╚═════╝
 """
 
-__version__ = "1.2.50"
+__version__ = "1.2.52"
 import spleenseg.splparser as spl
 
 description: str = """
@@ -235,14 +235,14 @@ def main(options: Namespace, inputdir: Path, outputdir: Path):
     env_outputDirsMake(options)
     neuralNet: neuralnet.NeuralNet = neuralnet.NeuralNet(options)
 
-    if "training" in options.mode:
-        training_do(neuralNet, options)
-
-    if "inference" in options.mode:
-        inference_do(neuralNet, options)
-
     if "http" in options.mode:
         inference_pfmsDo(neuralNet, options)
+
+    elif "training" in options.mode:
+        training_do(neuralNet, options)
+
+    elif "inference" in options.mode:
+        inference_do(neuralNet, options)
 
 
 if __name__ == "__main__":
